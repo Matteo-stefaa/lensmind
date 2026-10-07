@@ -22,6 +22,8 @@ the next. Do not add assistant code before phase 1 is complete.
 4. **Full loop** — intent → apply → test shot → evaluate → refine, automatic, bounded
    by `LENSMIND_MAX_TEST_SHOTS`, with live progress in the web app.
 
+Current status: phase 1 implemented; hardware checklist in docs/cameras/nikon-d3500.md.
+
 ## Commands
 
 ```bash
@@ -43,6 +45,11 @@ src/lensmind/
 │   ├── base.py        # Camera protocol, Setting/SettingGroup/CameraStatus models, CameraError
 │   ├── gphoto.py      # libgphoto2 implementation
 │   ├── mock.py        # simulated camera
+│   ├── mock_catalog.py # mock settings, loaded from data/nikon-d3500-M.txt
+│   ├── mock_image.py  # synthetic scene for mock preview/capture
+│   ├── dump.py        # parser for `gphoto2 --list-all-config` output
+│   ├── primary.py     # primary roles → setting names
+│   ├── messages.py    # user-facing strings of the camera layer
 │   └── session.py     # single lock, reconnection, live-view idle shutdown
 ├── assistant/
 │   ├── provider.py    # Provider protocol + Claude implementation + fake for tests
@@ -177,6 +184,8 @@ Rules:
 | GET | `/api/preview` | One live-view frame (JPEG) |
 | POST | `/api/liveview/stop` | Mirror down |
 | GET | `/api/photos` | Recent shots |
+| GET | `/api/photos/{file}` | Download one stored file |
+| GET | `/api/photos/{file}/thumb` | Its 400 px thumbnail |
 | POST | `/api/assistant/sessions` | Start a conversation |
 | POST | `/api/assistant/sessions/{id}/messages` | Send text; returns reply and any proposal |
 | POST | `/api/assistant/sessions/{id}/proposals/{pid}/apply` | Apply an approved proposal |

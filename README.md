@@ -115,7 +115,9 @@ running as a service).
 | `LENSMIND_MOCK` | `0` | `1` uses the simulated camera |
 | `LENSMIND_HOST` | `0.0.0.0` | Address the server listens on |
 | `LENSMIND_PORT` | `8000` | Port (the service uses `80`) |
-| `LENSMIND_PHOTOS_DIR` | `./photos` | Where downloaded shots are stored |
+| `LENSMIND_PHOTOS_DIR` | `~/lensmind-photos` | Where downloaded shots are stored |
+| `LENSMIND_MOCK_DIAL` | `M` | Dial position of the simulated camera (`M`, `A`, `AUTO`) |
+| `LENSMIND_LIVEVIEW_IDLE_SECONDS` | `5` | Live view turns off after this many seconds without frames |
 | `ANTHROPIC_API_KEY` | – | API key for the AI model (phase 2 onward) |
 | `LENSMIND_MODEL` | – | Model identifier used by the assistant |
 | `LENSMIND_MAX_TEST_SHOTS` | `3` | Test shots allowed per request |
@@ -128,8 +130,8 @@ running as a service).
   in the modes that allow it (M, S, A).
 - With capture target "Internal RAM" the shot is downloaded to the Pi and not written
   to the SD card; with "Memory card" it is kept on the card too.
-- Live view over USB and the exact set of writable settings still have to be
-  confirmed on a real body; findings go in `docs/cameras/nikon-d3500.md`.
+- Live view over USB needs an SD card in the camera and the dial on P, S, A or M.
+  Details and open questions: `docs/cameras/nikon-d3500.md`.
 
 ## Privacy and security
 
