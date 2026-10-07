@@ -184,6 +184,8 @@ class Camera:
         self.fail_next: dict[str, int] = {}
         self.events: list[tuple[int, object]] = []
         self.abilities = CameraAbilities()
+        # Like a Nikon body: ending live view when it is not running is refused.
+        self.in_liveview = False
         last_camera = self
 
     def _call(self, method: str, *args: object) -> None:
@@ -220,6 +222,10 @@ class Camera:
         target = self._find(self.root, name)
         if target is None:
             raise GPhoto2Error(GP_ERROR_BAD_PARAMETERS)
+        if name == "viewfinder" and widget.get_value() == 0:
+            if not self.in_liveview:
+                raise GPhoto2Error(GP_ERROR)  # PTP NotLiveView, reported as a generic error
+            self.in_liveview = False
         target.value = widget.get_value()
 
     def capture(self, kind: int) -> CameraFilePath:
@@ -236,6 +242,7 @@ class Camera:
 
     def capture_preview(self) -> CameraFile:
         self._call("capture_preview")
+        self.in_liveview = True
         return CameraFile(b"\xff\xd8fake-preview\xff\xd9")
 
     def _find(self, widget: CameraWidget, name: str) -> CameraWidget | None:

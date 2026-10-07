@@ -188,3 +188,20 @@ def test_capture_turns_viewfinder_off_first_and_collects_raw(cam: Any, gp: Modul
 def test_close_swallows_errors(cam: Any, gp: ModuleType) -> None:
     fake().fail_next["exit"] = gp.GP_ERROR_IO
     cam.close()
+
+
+def test_capture_without_liveview_succeeds_on_a_strict_body(cam: Any) -> None:
+    files = cam.capture()
+    assert [f.name for f in files] == ["DSC_0001.JPG"]
+
+
+def test_capture_after_session_ended_liveview_succeeds(cam: Any) -> None:
+    cam.preview()
+    cam.end_liveview()
+    assert [f.name for f in cam.capture()] == ["DSC_0001.JPG"]
+
+
+def test_capture_during_liveview_ends_it_first(cam: Any) -> None:
+    cam.preview()
+    cam.capture()
+    assert not fake().in_liveview

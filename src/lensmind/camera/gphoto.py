@@ -91,7 +91,15 @@ class GPhotoCamera:
 
     def capture(self) -> list[CapturedFile]:
         gp = self._gp
-        self.end_liveview()
+        try:
+            self.end_liveview()
+        except CameraDisconnected:
+            raise
+        except CameraError:
+            # Nikon bodies refuse to end a live view that is not running (NotLiveView).
+            # Only a live view we know is on must be stopped before shooting.
+            if self._liveview:
+                raise
         first = self._run(self._camera.capture, gp.GP_CAPTURE_IMAGE)
         paths = [(first.folder, first.name)]
         deadline = time.monotonic() + SECOND_FILE_WAIT_SECONDS
