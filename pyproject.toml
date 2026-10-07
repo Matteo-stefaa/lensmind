@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lensmind"
+version = "0.1.0"
+description = "An AI assistant that sets up a tethered camera"
+requires-python = ">=3.11"
+dependencies = ["fastapi>=0.110", "uvicorn>=0.29", "Pillow>=10.0"]
+
+[project.optional-dependencies]
+pi = ["gphoto2>=2.5"]
+dev = ["pytest>=8.0", "ruff>=0.5", "httpx>=0.27"]
+
+[project.scripts]
+lensmind = "lensmind.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"lensmind.camera" = ["data/*.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# Python files only: keep code blocks in Markdown docs as written.
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
