@@ -142,3 +142,17 @@ def test_web_app_is_served(client: TestClient) -> None:
     response = client.get("/")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
+
+
+def test_status_without_libgphoto2_explains_how_to_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys
+
+    monkeypatch.setitem(sys.modules, "gphoto2", None)
+    real_camera = Settings(mock=False, language="en", photos_dir=tmp_path)
+    with TestClient(create_app(real_camera)) as test_client:
+        response = test_client.get("/api/status")
+        assert response.status_code == 200
+        assert response.json()["connected"] is False
+        assert "LENSMIND_MOCK=1" in response.json()["detail"]

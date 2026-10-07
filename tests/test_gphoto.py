@@ -205,3 +205,11 @@ def test_capture_during_liveview_ends_it_first(cam: Any) -> None:
     cam.preview()
     cam.capture()
     assert not fake().in_liveview
+
+
+def test_missing_libgphoto2_is_reported_as_not_connected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, "gphoto2", None)  # makes `import gphoto2` fail
+    with pytest.raises(CameraDisconnected) as caught:
+        open_camera()
+    assert caught.value.status == 503
+    assert "LENSMIND_MOCK=1" in caught.value.message

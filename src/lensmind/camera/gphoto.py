@@ -29,7 +29,10 @@ SECOND_FILE_WAIT_SECONDS = 1.5
 
 class GPhotoCamera:
     def __init__(self, lang: str = "it") -> None:
-        import gphoto2 as gp  # lazy: mock mode must work without libgphoto2
+        try:
+            import gphoto2 as gp  # lazy: mock mode must work without libgphoto2
+        except ImportError as error:
+            raise CameraDisconnected(msg(lang, "gphoto_missing"), 503) from error
 
         self._gp: Any = gp
         self._lang = lang

@@ -19,6 +19,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "not_supported": "Operazione non supportata dalla fotocamera",
         "bad_parameters": "La fotocamera ha rifiutato il valore",
         "camera_error": "Errore della fotocamera ({error})",
+        "gphoto_missing": (
+            "libgphoto2 non è installato: avvia con LENSMIND_MOCK=1 "
+            "oppure installa con pip install '.[pi]'"
+        ),
     },
     "en": {
         "unknown_setting": "Unknown setting: {name}",
@@ -38,6 +42,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "not_supported": "Operation not supported by the camera",
         "bad_parameters": "The camera rejected the value",
         "camera_error": "Camera error ({error})",
+        "gphoto_missing": (
+            "libgphoto2 is not installed: start with LENSMIND_MOCK=1 "
+            "or install it with pip install '.[pi]'"
+        ),
     },
 }
 
