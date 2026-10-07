@@ -1,5 +1,6 @@
 import { api } from "./api.js";
 import { t } from "./i18n.js";
+import { afterFrameError } from "./policy.js";
 
 let running = false;
 let generation = 0;
@@ -39,13 +40,18 @@ export function stop({ beacon = false } = {}) {
   else api.stopLiveview().catch(() => {});
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 // One frame at a time: the next request leaves only after the previous frame is shown.
 async function loop(run) {
   const img = document.getElementById("vf-img");
+  let failures = 0;
   while (running && run === generation) {
     try {
       const blob = await api.preview();
       if (run !== generation) return;
+      failures = 0;
+      showMessage("");
       const url = URL.createObjectURL(blob);
       await new Promise((resolve) => {
         img.onload = resolve;
@@ -56,10 +62,15 @@ async function loop(run) {
       frameUrl = url;
     } catch (error) {
       if (run !== generation) return;
-      running = false;
-      updateButton();
+      failures += 1;
       showMessage(error.message);
-      return;
+      const delay = afterFrameError(error.status, failures);
+      if (delay === null) {
+        running = false;
+        updateButton();
+        return;
+      }
+      await sleep(delay);
     }
   }
 }
