@@ -1,0 +1,81 @@
+Camera summary:
+Manufacturer: Nikon Corporation
+Model: D3500
+  Version: V1.00
+  Serial Number: 00000000000000000000000006073262
+Vendor Extension ID: 0xa (1.0)
+Vendor Extension Description: Microsoft.com/DeviceServices: 1.0
+
+Capture Formats: JPEG Undefined Type
+Display Formats: JPEG, Undefined Type, Association/Directory, TIFF, DPOF, Script, Apple Quicktime
+
+Device Capabilities:
+	File Download, File Deletion, File Upload
+	Generic Image Capture, No Open Capture, Nikon Capture 1, Nikon Capture 2, Nikon Capture 3
+
+Storage Devices Summary:
+
+Device Property Summary:
+Battery Level(0x5001):(read only) (type=0x2) Range [1 - 100, step 1] value: 100% (100)
+Image Size(0x5003):(readwrite) (type=0xffff) Enumeration [
+	'6000x4000',
+	'4496x3000',
+	'2992x2000'
+	] value: '6000x4000'
+Compression Setting(0x5004):(readwrite) (type=0x2) Enumeration [0,1,2,4,7] value: 7
+White Balance(0x5005):(readwrite) (type=0x4) Enumeration [2,4,5,6,7,32784,32785,32787] value: Automatic (2)
+F-Number(0x5007):(read only) (type=0x4) Enumeration [100,110,120,140,160,180,200,220,250,280,320,350,400,450,500,560,630,710,800,900,1000,1100,1300,1400,1600,1800,2000,2200] value: f/3.5 (350)
+Focal Length(0x5008):(read only) (type=0x6) Range [1800 - 5500, step 1] value: 18 mm (1800)
+Focus Mode(0x500a):(read only) (type=0x4) Enumeration [1,32784,32785,32786,32787] value: AF-A (32786)
+Exposure Metering Mode(0x500b):(readwrite) (type=0x4) Enumeration [2,3,4] value: Multi-spot (3)
+Flash Mode(0x500c):(readwrite) (type=0x4) Enumeration [2] value: Flash off (2)
+Exposure Time(0x500d):(read only) (type=0x6) Enumeration [2,3,4,5,6,8,10,12,15,20,25,31,40,50,62,80,100,125,166,200,250,333,400,500,666,769,1000,1250,1666,2000,2500,3333,4000,5000,6250,7692,10000,13000,16000,20000,25000,30000,40000,50000,60000,80000,100000,130000,150000,200000,250000,300000] value: 0.0067 sec (666)
+Exposure Program Mode(0x500e):(read only) (type=0x4) Enumeration [1,2,3,4,32784,32785,32787,32788,32789,32790,32793] value: Night Landscape (32790)
+Exposure Index (film speed ISO)(0x500f):(readwrite) (type=0x4) Enumeration [100,200,400,800,1600,3200,6400,12800,25600] value: ISO 800 (800)
+Exposure Bias Compensation(0x5010):(readwrite) (type=0x3) Enumeration [-5000,-4666,-4333,-4000,-3666,-3333,-3000,-2666,-2333,-2000,-1666,-1333,-1000,-666,-333,0,333,666,1000,1333,1666,2000,2333,2666,3000,3333,3666,4000,4333,4666,5000] value: 0.0 stops (0)
+Date & Time(0x5011):(readwrite) (type=0xffff) '20261007T192352'
+Still Capture Mode(0x5013):(readwrite) (type=0x4) Enumeration [1,2,32785,32790] value: Single Shot (1)
+Burst Number(0x5018):(readwrite) (type=0x4) Range [1 - 100, step 1] value: 1
+Focus Metering Mode(0x501c):(readwrite) (type=0x4) Enumeration [2,32784,32785,32786] value: Closest Subject (32785)
+Artist(0x501e):(read only) (type=0xffff) ''
+Copyright Info(0x501f):(read only) (type=0xffff) ''
+UseDeviceStageFlag(0xd303):(read only) (type=0x2) 1
+Property 0xd406:(readwrite) (type=0xffff) 'Windows/6.0.5330.0 MTPClassDriver/6.0.5330.0'
+Property 0xd407:(read only) (type=0x6) 1
+Reset Bank 0(0xd015):(readwrite) (type=0x2) Range [0 - 1, step 1] value: 0
+White Balance Preset Number(0xd01f):(readwrite) (type=0x2) Range [0 - 1, step 1] value: 0
+Color Space(0xd032):(readwrite) (type=0x2) Range [0 - 1, step 1] value: 0
+Effect Mode(0xd037):(readwrite) (type=0x2) Range [0 - 11, step 1] value: 11
+Auto ISO(0xd054):(readwrite) (type=0x2) Range [0 - 1, step 1] value: Off (0)
+Live View AF Area(0xd05d):(readwrite) (type=0x2) Range [0 - 3, step 1] value: 0
+Live View AF Focus(0xd061):(readwrite) (type=0x2) Enumeration [0,2,3,4] value: 0
+Long Exposure Noise Reduction(0xd06b):(readwrite) (type=0x2) Range [0 - 1, step 1] value: On (1)
+No CF Card Release(0xd08a):(readwrite) (type=0x2) Range [0 - 1, step 1] value: Off (1)
+RetractableLensWarning(0xd09c):(read only) (type=0x2) Range [0 - 1, step 1] value: 0
+Movie Screen Size(0xd0a0):(readwrite) (type=0x2) Range [0 - 6, step 1] value: 0
+MovRecProhibitCondition(0xd0a4):(read only) (type=0x6) 0
+ISOControlSensitivity(0xd0b5):(read only) (type=0x6) 12800
+Lens ID(0xd0e0):(read only) (type=0x4) 929
+Lens Sort(0xd0e1):(read only) (type=0x2) Range [0 - 1, step 1] value: 1
+Lens Type(0xd0e2):(read only) (type=0x8) 379
+Min. Focal Length(0xd0e3):(read only) (type=0x6) 18 mm (1800)
+Max. Focal Length(0xd0e4):(read only) (type=0x6) 55 mm (5500)
+Nikon Exposure Time(0xd100):(read only) (type=0x6) Enumeration [69536,68736,68036,67536,67136,66786,66536,66336,66176,66036,65936,65856,65786,65736,65696,65661,65636,65616,65596,65586,65576,65566,65561,65556,65551,65549,65546,65544,65542,65541,65540,65539,655385,65538,655376,655373,65537,851978,1048586,131073,1638410,196609,262145,327681,393217,524289,655361,851969,983041,1310721,1638401,1966081] value: 65551
+AC Power(0xd101):(read only) (type=0x2) Range [0 - 1, step 1] value: No (0)
+Warning Status(0xd102):(read only) (type=0x2) 0
+Recording Media(0xd10b):(readwrite) (type=0x2) Range [0 - 2, step 1] value: Card (0)
+Active D-Lighting(0xd14e):(readwrite) (type=0x2) Range [0 - 1, step 1] value: 1
+Autofocus Mode(0xd161):(readwrite) (type=0x2) Range [0 - 4, step 1] value: AF-A (2)
+AF Assist Lamp(0xd163):(readwrite) (type=0x2) Range [0 - 1, step 1] value: On (0)
+ISO Auto(0xd16a):(readwrite) (type=0x2) Range [0 - 1, step 1] value: 0
+Live View Status(0xd1a2):(read only) (type=0x2) Range [0 - 1, step 1] value: No (0)
+Live View Image Zoom Ratio(0xd1a3):(readwrite) (type=0x2) Range [0 - 5, step 1] value: 0
+Live View Prohibit Condition(0xd1a4):(read only) (type=0x6) 2147500032
+LiveViewMovieMode(0xd1ac):(readwrite) (type=0x2) Enumeration [1,2] value: 2
+Property 0xd1b5:(read only) (type=0x4) Enumeration [0,32784,32785,32786,32787,32800] value: 0
+Property 0xd1dd:(readwrite) (type=0x2) Range [0 - 1, step 1] value: 0
+ApplicationMode(0xd1f0):(readwrite) (type=0x2) Range [0 - 1, step 1] value: 0
+ExposureRemaining(0xd1f1):(read only) (type=0x6) Range [0 - 4294967295, step 1] value: 0
+Active Pic Ctrl Item(0xd200):(readwrite) (type=0x4) Enumeration [1,2,3,4,5,6,7] value: 1
+Change Pic Ctrl Item(0xd201):(read only) (type=0x4) Enumeration [] value: 0
+
