@@ -39,6 +39,7 @@ def test_status_when_camera_missing(tmp_path: Path) -> None:
             "detail": "Camera not connected",
             "language": "en",
             "camera": None,
+            "assistant": False,
         }
         assert test_client.get("/api/settings").status_code == 503
 

@@ -37,12 +37,19 @@ def _language(request: Request) -> str:
 
 @router.get("/status")
 def get_status(request: Request) -> StatusOut:
+    language = _language(request)
+    assistant = request.app.state.assistant is not None
     try:
         status = _session(request).status()
     except CameraError as error:
-        return StatusOut(connected=False, detail=error.message, language=_language(request))
+        return StatusOut(
+            connected=False, detail=error.message, language=language, assistant=assistant
+        )
     return StatusOut(
-        connected=True, language=_language(request), camera=CameraStatusOut.from_model(status)
+        connected=True,
+        language=language,
+        camera=CameraStatusOut.from_model(status),
+        assistant=assistant,
     )
 
 

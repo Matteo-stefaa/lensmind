@@ -18,6 +18,9 @@ def test_install_script_covers_the_documented_steps() -> None:
         "usermod -aG plugdev",
         "/etc/lensmind.env",
         "LENSMIND_PORT=80",
+        "# ANTHROPIC_API_KEY=",
+        "# LENSMIND_MODEL=",
+        "chmod 600 /etc/lensmind.env",
         "systemctl enable --now lensmind.service",
     ]:
         assert needed in text

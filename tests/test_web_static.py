@@ -8,7 +8,19 @@ from fastapi.testclient import TestClient
 from lensmind.api.app import WEB_DIR, create_app
 from lensmind.settings import Settings
 
-MODULES = ["app", "api", "i18n", "ui", "store", "viewfinder", "tiles", "controls", "gallery"]
+MODULES = [
+    "app",
+    "api",
+    "i18n",
+    "ui",
+    "store",
+    "viewfinder",
+    "tiles",
+    "controls",
+    "gallery",
+    "assistant",
+    "chat_logic",
+]
 
 
 @pytest.fixture
@@ -21,7 +33,19 @@ def test_index_loads_the_app(client: TestClient) -> None:
     html = client.get("/").text
     assert 'src="/js/app.js"' in html
     assert 'href="/style.css"' in html
-    for element_id in ["vf-img", "vf-overlay", "tiles", "shutter", "groups", "grid", "sheet"]:
+    for element_id in [
+        "vf-img",
+        "vf-overlay",
+        "tiles",
+        "shutter",
+        "groups",
+        "grid",
+        "sheet",
+        "chat",
+        "composer",
+        "chat-input",
+        "assistant-off",
+    ]:
         assert f'id="{element_id}"' in html
     assert 'id="toast"' in html
 
@@ -46,3 +70,11 @@ def test_overlays_do_not_catch_touches() -> None:
     for selector in [".vf-overlay", ".toast"]:
         block = css.split(selector + " {", 1)[1].split("}", 1)[0]
         assert "pointer-events: none" in block
+
+
+def test_new_messages_scroll_clear_of_the_composer_and_bottom_bar() -> None:
+    css = (WEB_DIR / "style.css").read_text(encoding="utf-8")
+    assert "scroll-padding-bottom" in css
+    script = (WEB_DIR / "js" / "assistant.js").read_text(encoding="utf-8")
+    # The card is filled before it is appended, so scrolling sees its real height.
+    assert script.index("renderCard(entry)") < script.index("append(card)")

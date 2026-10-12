@@ -40,5 +40,15 @@ export const api = {
   capture: async () => (await request("POST", "/api/capture")).json(),
   preview: async () => (await request("GET", "/api/preview")).blob(),
   stopLiveview: () => request("POST", "/api/liveview/stop"),
+  startChat: async () => (await request("POST", "/api/assistant/sessions")).json(),
+  sendChat: async (id, text) =>
+    (await request("POST", `/api/assistant/sessions/${encodeURIComponent(id)}/messages`, { text })).json(),
+  applyProposal: async (id, proposalId) =>
+    (
+      await request(
+        "POST",
+        `/api/assistant/sessions/${encodeURIComponent(id)}/proposals/${encodeURIComponent(proposalId)}/apply`,
+      )
+    ).json(),
   photos: async (limit = 60) => (await request("GET", `/api/photos?limit=${limit}`)).json(),
 };

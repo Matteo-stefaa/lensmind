@@ -24,8 +24,13 @@ if [[ ! -f /etc/lensmind.env ]]; then
   cat > /etc/lensmind.env <<'ENV'
 LENSMIND_PORT=80
 LENSMIND_LANGUAGE=it
+# Assistant: set both, then run: sudo systemctl restart lensmind
+# ANTHROPIC_API_KEY=
+# LENSMIND_MODEL=
 ENV
 fi
+# It holds the API key: root only (systemd reads it before starting the service user).
+chmod 600 /etc/lensmind.env
 
 sed -e "s|@USER@|$RUN_USER|g" -e "s|@REPO@|$REPO_DIR|g" \
   "$REPO_DIR/deploy/lensmind.service" > /etc/systemd/system/lensmind.service

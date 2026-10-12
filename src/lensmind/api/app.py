@@ -8,7 +8,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from lensmind.api.routes_assistant import router as assistant_router
 from lensmind.api.routes_camera import router as camera_router
+from lensmind.assistant.loop import Assistant, AssistantError
+from lensmind.assistant.provider import ClaudeProvider, Provider
 from lensmind.camera.base import Camera, CameraError
 from lensmind.camera.session import CameraSession
 from lensmind.settings import Settings
@@ -28,15 +31,22 @@ def camera_factory_for(settings: Settings) -> Callable[[], Camera]:
     return lambda: GPhotoCamera(lang=settings.language)
 
 
-async def camera_error_handler(request: Request, error: Exception) -> JSONResponse:
-    assert isinstance(error, CameraError)
+async def error_handler(request: Request, error: Exception) -> JSONResponse:
+    assert isinstance(error, CameraError | AssistantError)
     return JSONResponse(status_code=error.status, content={"detail": error.message})
+
+
+def provider_for(settings: Settings) -> Provider | None:
+    if settings.anthropic_api_key is None or settings.model is None:
+        return None
+    return ClaudeProvider(settings.anthropic_api_key, settings.model)
 
 
 def create_app(
     settings: Settings | None = None,
     camera_factory: Callable[[], Camera] | None = None,
     web_dir: Path = WEB_DIR,
+    provider: Provider | None = None,
 ) -> FastAPI:
     config = settings or Settings.from_env()
     factory = camera_factory or camera_factory_for(config)
@@ -48,13 +58,19 @@ def create_app(
         app.state.settings = config
         app.state.session = session
         app.state.store = PhotoStore(config.photos_dir)
+        chosen = provider if provider is not None else provider_for(config)
+        app.state.assistant = (
+            Assistant(session, chosen, config.language, config.max_turns) if chosen else None
+        )
         try:
             yield
         finally:
             session.close()
 
     app = FastAPI(title="lensmind", lifespan=lifespan)
-    app.add_exception_handler(CameraError, camera_error_handler)
+    app.add_exception_handler(CameraError, error_handler)
+    app.add_exception_handler(AssistantError, error_handler)
     app.include_router(camera_router)
+    app.include_router(assistant_router)
     app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")
     return app
