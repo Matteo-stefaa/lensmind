@@ -24,6 +24,9 @@ html, body {
   font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
+/* Scrolled-to messages stop above the sticky composer and the fixed bottom bar. */
+html { scroll-padding-bottom: calc(var(--bar-h) + 72px + env(safe-area-inset-bottom)); }
+
 body {
   min-height: 100dvh;
   overflow-x: hidden;

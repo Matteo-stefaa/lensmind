@@ -70,3 +70,11 @@ def test_overlays_do_not_catch_touches() -> None:
     for selector in [".vf-overlay", ".toast"]:
         block = css.split(selector + " {", 1)[1].split("}", 1)[0]
         assert "pointer-events: none" in block
+
+
+def test_new_messages_scroll_clear_of_the_composer_and_bottom_bar() -> None:
+    css = (WEB_DIR / "style.css").read_text(encoding="utf-8")
+    assert "scroll-padding-bottom" in css
+    script = (WEB_DIR / "js" / "assistant.js").read_text(encoding="utf-8")
+    # The card is filled before it is appended, so scrolling sees its real height.
+    assert script.index("renderCard(entry)") < script.index("append(card)")

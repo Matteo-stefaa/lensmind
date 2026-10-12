@@ -308,3 +308,15 @@ def test_oldest_conversation_is_evicted() -> None:
     assistant.start()
     with pytest.raises(AssistantError):
         assistant.get(first)
+
+
+@pytest.mark.parametrize(
+    "content", [[], [{"type": "thinking", "thinking": "", "signature": "sig"}]]
+)
+def test_empty_reply_is_reported_and_rolled_back(content: list[dict[str, Any]]) -> None:
+    assistant, _, _, cid = make([ModelReply(content, "end_turn"), reply(text_block("Hi."))])
+    with pytest.raises(AssistantError) as caught:
+        assistant.send(cid, "hello")
+    assert caught.value.status == 502
+    assert assistant.get(cid).history == []
+    assert assistant.send(cid, "hello").reply == "Hi."

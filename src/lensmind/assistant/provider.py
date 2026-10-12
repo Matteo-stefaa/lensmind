@@ -11,6 +11,10 @@ from typing import Any, Protocol
 Block = dict[str, Any]
 
 MAX_TOKENS = 16000
+# Seconds before a request is abandoned. The Pi reaches the API through a phone
+# hotspot: a stalled connection must not hold the conversation for the SDK's
+# default ten minutes per attempt.
+REQUEST_TIMEOUT = 120.0
 
 
 @dataclass(frozen=True)
@@ -55,7 +59,7 @@ class ClaudeProvider:
         if client is None:
             import anthropic
 
-            client = anthropic.Anthropic(api_key=api_key)
+            client = anthropic.Anthropic(api_key=api_key, timeout=REQUEST_TIMEOUT, max_retries=1)
         self._client = client
         self._model = model
 

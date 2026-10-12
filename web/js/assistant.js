@@ -9,6 +9,7 @@ let sessionId = null;
 let available = false;
 let busy = false;
 let latest = null; // { proposal, card, session, current } of the newest proposal
+let generation = 0; // bumped by ↺: replies to an abandoned conversation are dropped
 
 export function initAssistant() {
   document.getElementById("composer").addEventListener("submit", (event) => {
@@ -19,11 +20,14 @@ export function initAssistant() {
     input.value = "";
     send(text);
   });
+  // Works while a reply is pending too, so a stalled request never traps the user.
   document.getElementById("chat-new").addEventListener("click", () => {
-    if (busy) return;
+    generation += 1;
     sessionId = null;
     latest = null;
+    busy = false;
     document.getElementById("chat").replaceChildren();
+    updateComposer();
   });
   updateComposer();
 }
@@ -36,7 +40,7 @@ export function setAssistantAvailable(flag) {
 function updateComposer() {
   document.getElementById("chat-input").disabled = !available;
   document.getElementById("chat-send").disabled = !available || busy;
-  document.getElementById("chat-new").disabled = !available || busy;
+  document.getElementById("chat-new").disabled = !available;
   document.getElementById("assistant-off").hidden = available;
 }
 
@@ -51,12 +55,14 @@ function bubble(kind, text) {
 }
 
 async function send(text) {
+  const mine = generation;
   busy = true;
   updateComposer();
   bubble("user", text);
   const thinking = bubble("assistant thinking", t("thinking"));
   try {
     const result = await sendMessage(api, sessionId, text);
+    if (mine !== generation) return;
     sessionId = result.sessionId;
     // Only now has the server accepted the message: an unapproved proposal is superseded.
     if (latest) {
@@ -67,16 +73,21 @@ async function send(text) {
     const turn = result.turn;
     if (turn.reply) bubble(turn.question ? "assistant question" : "assistant", turn.reply);
     if (turn.proposal) {
-      const card = append(el("div", { className: "proposal" }));
-      latest = { proposal: turn.proposal, card, session: sessionId, current: true };
-      renderCard(latest);
+      const card = el("div", { className: "proposal" });
+      const entry = { proposal: turn.proposal, card, session: sessionId, current: true };
+      renderCard(entry);
+      append(card);
+      latest = entry;
     }
   } catch (error) {
+    if (mine !== generation) return;
     thinking.remove();
     bubble("error", error.message);
   } finally {
-    busy = false;
-    updateComposer();
+    if (mine === generation) {
+      busy = false;
+      updateComposer();
+    }
   }
 }
 

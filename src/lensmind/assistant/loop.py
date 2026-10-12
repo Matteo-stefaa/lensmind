@@ -179,6 +179,9 @@ class Assistant:
             reply = self._provider.complete(self._system, conversation.history, TOOLS)
             if reply.stop_reason not in COMPLETE:
                 raise IncompleteReply(reply.stop_reason)
+            if not reply.tool_calls and not reply.text:
+                # An empty assistant message would make every later request invalid.
+                raise IncompleteReply("empty reply")
             conversation.history.append({"role": "assistant", "content": reply.content})
             last_text = reply.text
             step = self._run_tools(conversation, reply.tool_calls)

@@ -4,6 +4,7 @@ from typing import Any
 import pytest
 
 from lensmind.assistant.provider import (
+    REQUEST_TIMEOUT,
     ClaudeProvider,
     FakeProvider,
     ModelReply,
@@ -141,3 +142,20 @@ def test_fake_provider_replays_script_and_records_requests() -> None:
         provider.complete("sys", history, [])
     assert provider.requests == [history, history, history]
     assert provider.system == "sys"
+
+
+def test_claude_provider_bounds_how_long_a_request_can_hang(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import anthropic
+
+    created: dict[str, Any] = {}
+
+    def fake_client(**kwargs: Any) -> SimpleNamespace:
+        created.update(kwargs)
+        return SimpleNamespace(messages=None)
+
+    monkeypatch.setattr(anthropic, "Anthropic", fake_client)
+    ClaudeProvider("key", "the-model")
+    assert created == {"api_key": "key", "timeout": REQUEST_TIMEOUT, "max_retries": 1}
+    assert REQUEST_TIMEOUT <= 120
