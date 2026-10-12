@@ -1,4 +1,5 @@
 import { api } from "./api.js";
+import { initAssistant, setAssistantAvailable } from "./assistant.js";
 import { initControls } from "./controls.js";
 import { setLastShot, showGallery } from "./gallery.js";
 import { setLanguage, t } from "./i18n.js";
@@ -27,6 +28,7 @@ async function refreshStatus() {
     status = { connected: false, detail: error.message };
   }
   if (status.language) setLanguage(status.language);
+  setAssistantAvailable(Boolean(status.assistant));
   const camera = status.camera;
   document.getElementById("conn-dot").classList.toggle("on", status.connected);
   document.getElementById("cam-model").textContent = status.connected ? camera.model : status.detail || t("not_connected");
@@ -67,6 +69,7 @@ async function init() {
   setLanguage("it");
   initTiles();
   initControls();
+  initAssistant();
   onSettings(showMode);
   document.getElementById("shutter").addEventListener("click", shoot);
   document.getElementById("lv-toggle").addEventListener("click", () => {

@@ -27,6 +27,16 @@ const STRINGS = {
     role_aperture: "Diaframma",
     role_iso: "ISO",
     role_exposure_comp: "Comp. esp.",
+    chat_placeholder: "Cosa vuoi fotografare?",
+    send: "Invia",
+    new_chat: "Nuova conversazione",
+    thinking: "Sto pensando…",
+    assistant_off: "Assistente non configurato: imposta ANTHROPIC_API_KEY e LENSMIND_MODEL",
+    apply: "Applica",
+    proposal_applied: "Applicata ✓",
+    proposal_partial: "Applicata in parte: {name} non riuscita ({detail})",
+    proposal_failed: "Non applicata: {name} ({detail})",
+    proposal_superseded: "Superata dal nuovo messaggio",
   },
   en: {
     back: "Back",
@@ -55,6 +65,16 @@ const STRINGS = {
     role_aperture: "Aperture",
     role_iso: "ISO",
     role_exposure_comp: "Exp. comp.",
+    chat_placeholder: "What do you want to shoot?",
+    send: "Send",
+    new_chat: "New conversation",
+    thinking: "Thinking…",
+    assistant_off: "Assistant not configured: set ANTHROPIC_API_KEY and LENSMIND_MODEL",
+    apply: "Apply",
+    proposal_applied: "Applied ✓",
+    proposal_partial: "Partly applied: {name} failed ({detail})",
+    proposal_failed: "Not applied: {name} ({detail})",
+    proposal_superseded: "Superseded by your new message",
   },
 };
 
@@ -66,6 +86,9 @@ export function setLanguage(code) {
   for (const node of document.querySelectorAll("[data-i18n]")) node.textContent = t(node.dataset.i18n);
   for (const node of document.querySelectorAll("[data-i18n-label]")) {
     node.setAttribute("aria-label", t(node.dataset.i18nLabel));
+  }
+  for (const node of document.querySelectorAll("[data-i18n-placeholder]")) {
+    node.setAttribute("placeholder", t(node.dataset.i18nPlaceholder));
   }
 }
 

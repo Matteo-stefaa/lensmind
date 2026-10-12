@@ -8,7 +8,19 @@ from fastapi.testclient import TestClient
 from lensmind.api.app import WEB_DIR, create_app
 from lensmind.settings import Settings
 
-MODULES = ["app", "api", "i18n", "ui", "store", "viewfinder", "tiles", "controls", "gallery"]
+MODULES = [
+    "app",
+    "api",
+    "i18n",
+    "ui",
+    "store",
+    "viewfinder",
+    "tiles",
+    "controls",
+    "gallery",
+    "assistant",
+    "chat_logic",
+]
 
 
 @pytest.fixture
@@ -21,7 +33,19 @@ def test_index_loads_the_app(client: TestClient) -> None:
     html = client.get("/").text
     assert 'src="/js/app.js"' in html
     assert 'href="/style.css"' in html
-    for element_id in ["vf-img", "vf-overlay", "tiles", "shutter", "groups", "grid", "sheet"]:
+    for element_id in [
+        "vf-img",
+        "vf-overlay",
+        "tiles",
+        "shutter",
+        "groups",
+        "grid",
+        "sheet",
+        "chat",
+        "composer",
+        "chat-input",
+        "assistant-off",
+    ]:
         assert f'id="{element_id}"' in html
     assert 'id="toast"' in html
 

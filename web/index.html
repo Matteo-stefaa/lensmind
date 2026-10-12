@@ -25,6 +25,13 @@
       <div class="tiles" id="tiles"></div>
       <div class="assistant" id="assistant">
         <p id="last-result"></p>
+        <p class="assistant-off" id="assistant-off" data-i18n="assistant_off" hidden></p>
+        <div class="chat" id="chat" aria-live="polite"></div>
+        <form class="composer" id="composer">
+          <input id="chat-input" type="text" autocomplete="off" enterkeyhint="send" maxlength="2000" data-i18n-placeholder="chat_placeholder">
+          <button class="icon-btn" id="chat-send" type="submit" data-i18n-label="send">➤</button>
+          <button class="icon-btn" id="chat-new" type="button" data-i18n-label="new_chat">↺</button>
+        </form>
       </div>
     </section>
 
