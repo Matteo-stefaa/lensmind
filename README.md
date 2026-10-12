@@ -121,6 +121,7 @@ running as a service).
 | `ANTHROPIC_API_KEY` | – | API key for the AI model (phase 2 onward) |
 | `LENSMIND_MODEL` | – | Model identifier used by the assistant |
 | `LENSMIND_MAX_TEST_SHOTS` | `3` | Test shots allowed per request |
+| `LENSMIND_MAX_TURNS` | `6` | Model calls allowed per message to the assistant |
 | `LENSMIND_LANGUAGE` | `it` | Language of the interface and of the assistant |
 
 ## Notes on the Nikon D3500
