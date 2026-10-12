@@ -47,9 +47,7 @@ The only module that imports `anthropic`, lazily inside `ClaudeProvider.__init__
 Neutral types, so the rest of `assistant/` never sees SDK types:
 
 ```python
-@dataclass(frozen=True)
-class TextBlock:
-    text: str
+Block = dict[str, Any]
 
 @dataclass(frozen=True)
 class ToolCall:
@@ -59,27 +57,33 @@ class ToolCall:
 
 @dataclass(frozen=True)
 class ModelReply:
-    blocks: list[TextBlock | ToolCall]
+    content: list[Block]       # verbatim, thinking blocks included
     stop_reason: str
+    # properties: text (joined text blocks), tool_calls (list[ToolCall])
 
 class ProviderError(Exception): ...
 
 class Provider(Protocol):
-    def complete(
-        self, system: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]]
-    ) -> ModelReply: ...
+    def complete(self, system: str, messages: list[Block], tools: list[Block]) -> ModelReply: ...
 ```
 
 `messages` uses the Messages API shape (`role`, `content` blocks with `text`,
-`tool_use`, `tool_result`), stored as plain dicts.
+`tool_use`, `tool_result`), stored as plain dicts. The assistant content is kept
+verbatim because current models return `thinking` blocks that must be sent back
+unchanged, and the history is append-only for the same reason.
 
-- `ClaudeProvider(api_key, model)`: `anthropic.Anthropic(...).messages.create`, with
-  `cache_control` on the system prompt and the last tool so the static prefix is cached.
-  Any SDK exception is re-raised as `ProviderError`.
-- `FakeProvider(script)`: returns scripted `ModelReply` objects in order, records each
-  request, and asserts on every call that the history is valid: roles alternate, and
-  every `tool_use` in an assistant message is answered by a `tool_result` with the same
-  id in the next user message. Running out of script raises `AssertionError`.
+- `ClaudeProvider(api_key, model, client=None)`: `client.messages.create` with
+  `max_tokens=16000` and `cache_control` on the system prompt (tools render before the
+  system prompt, so one breakpoint caches both). No `thinking`, `effort` or beta
+  parameters: the model is configurable and these differ per model. Any exception from
+  the call is re-raised as `ProviderError`. `client` is injectable for tests; when it
+  is `None`, `anthropic` is imported there.
+- `FakeProvider(replies)`: returns scripted `ModelReply` objects (or raises scripted
+  exceptions) in order, records each request, and asserts on every call that the
+  history is valid: it starts with a user message, roles alternate, and every
+  `tool_use` in an assistant message is answered, first thing, by a `tool_result` with
+  the same id in the next user message. Running out of script raises `AssertionError`.
+- Small builders `text_block(text)` and `tool_use_block(id, name, **input)` for tests.
 
 ### 3.2 `assistant/tools.py`
 
@@ -94,10 +98,12 @@ Tool schemas (JSON Schema, sent to the model) and their execution through `Camer
 
 `propose_settings` validation, against `camera.settings()` read at that moment:
 
-- each value through `camera.base.validate()` (unknown → 404 message, read-only → 409
-  message, outside choices/range → 422 message listing the allowed values);
+- each value through `camera.base.validate()` with language `en`: these errors are
+  read by the model (unknown, read-only, outside choices/range with the allowed values);
 - `changes` not empty, no duplicate names, non-empty `reason`, value different from the
-  current one;
+  current one; malformed input (missing fields, wrong types) is an error too;
+- a second `propose_settings` in the same model reply is rejected (one proposal at a
+  time);
 - all errors are collected and returned together as one tool error (`is_error: true`);
   nothing is stored. The model may retry within the turn limit.
 
@@ -117,7 +123,11 @@ class Proposal:
     id: str
     summary: str
     changes: list[Change]
+    tool_use_id: str
     state: Literal["pending", "applied", "partial", "failed", "superseded"]
+    applied: list[Change]
+    failed: tuple[str, str] | None   # (name, detail)
+    reported: bool                   # outcome already sent to the model
 ```
 
 ### 3.3 `assistant/prompts.py`
@@ -144,15 +154,11 @@ class Turn:
     finished: bool
     limit_reached: bool
 
-@dataclass
-class ApplyResult:
-    applied: list[Change]
-    failed: tuple[str, str] | None   # (name, detail)
-
 class Conversation:
     id: str
     history: list[dict]
     pending_results: list[dict]      # tool_result blocks not yet sent
+    awaiting_answer: list[str]       # ask_user ids answered by the next user text
     proposal: Proposal | None
     lock: threading.Lock
 
@@ -162,7 +168,7 @@ class Assistant:
     def start(self) -> Conversation: ...
     def get(self, conversation_id: str) -> Conversation: ...   # AssistantError 404
     def send(self, conversation_id: str, text: str) -> Turn: ...
-    def apply(self, conversation_id: str, proposal_id: str) -> ApplyResult: ...
+    def apply(self, conversation_id: str, proposal_id: str) -> Proposal: ...
 ```
 
 `AssistantError(message, status)` mirrors `CameraError`. The registry keeps at most
@@ -178,8 +184,10 @@ class Assistant:
    - A proposal applied since the last message: its tool result carries the outcome
      (applied values, or partial with the failed setting and reason).
    - A pending `ask_user`: its tool result is the user's text.
-4. Loop for at most `max_turns` model calls. For each reply, append it to history and
-   execute every tool call in order:
+4. Loop for at most `max_turns` model calls. A reply whose `stop_reason` is not
+   `end_turn`, `tool_use` or `stop_sequence` (e.g. `refusal`, `max_tokens`) is treated
+   as a provider error (step 7). Otherwise append it to history and execute every tool
+   call in order:
    - `get_camera_state`, or an invalid `propose_settings` → result appended now;
    - valid `propose_settings` → proposal stored, result deferred, loop stops after this
      reply;
@@ -193,39 +201,45 @@ class Assistant:
    unanswered results stay in `pending_results`.
 6. `reply` is the concatenated text blocks of the last model reply, plus the `ask_user`
    question or `finish` summary when present.
-7. `ProviderError` → restore the snapshot, raise `AssistantError` 502.
+7. `ProviderError` → restore the snapshot, raise `AssistantError` 502 (message
+   "unreachable" for errors, "incomplete reply" for an unexpected stop reason).
+
+The history always ends with an assistant message between requests: results that are
+not sent within a request wait in `pending_results` / `awaiting_answer` / the proposal.
 
 Camera calls hold the camera lock only for their own duration; no lock is held while
 waiting for the model.
 
 `apply`:
 
-1. Unknown proposal → 404. Proposal not the conversation's current one, or not
-   `pending` → 409.
+1. Conversation busy → 409. Proposal id not the conversation's current proposal
+   (unknown, or replaced by a newer one) → 404. Current proposal not `pending` → 409.
 2. Read `camera.settings()` once and validate every change against it. Any failure →
    raise the `CameraError` (422/409/404); nothing is written; state stays `pending`.
 3. Write changes in order with `camera.set`. On a `CameraError`, stop: state `partial`
    (some applied) or `failed` (none), record the failing name and message.
 4. Otherwise state `applied`.
-5. The outcome is queued as the proposal's tool result for the next `send`.
+5. Return the proposal. Its outcome becomes the proposal's tool result at the next
+   `send`.
 
 ## 4. HTTP API — `api/routes_assistant.py`
 
 | Method | Path | Body → response |
 |---|---|---|
 | GET | `/api/status` | adds `assistant: bool` (`assistant_ready`) |
-| POST | `/api/assistant/sessions` | → `{id}` |
+| POST | `/api/assistant/sessions` | → 201 `{id}` |
 | POST | `/api/assistant/sessions/{id}/messages` | `{text}` (1–2000 chars) → `{reply, proposal?, question?, finished, limit_reached}` |
-| POST | `/api/assistant/sessions/{id}/proposals/{pid}/apply` | → `{state, applied: [{name, value}], failed?: {name, detail}}` |
+| POST | `/api/assistant/sessions/{id}/proposals/{pid}/apply` | → the proposal |
 
-`proposal` in responses: `{id, summary, changes: [{name, label, old, new, reason}]}`.
+A proposal in responses: `{id, summary, state, changes: [{name, label, old, new,
+reason}], applied: [name], failed: {name, detail} | null}`.
 
 Errors, body `{"detail": "..."}` in the configured language:
 
 | Case | Status |
 |---|---|
 | Assistant not configured | 503 |
-| Unknown session or proposal | 404 |
+| Unknown session; unknown or replaced proposal | 404 |
 | Conversation busy; proposal superseded or already applied | 409 |
 | Value no longer valid at apply time | 422 (from `CameraError`) |
 | Provider error | 502 |
@@ -240,15 +254,17 @@ Errors, body `{"detail": "..."}` in the configured language:
 ## 5. Web app
 
 - New `web/js/assistant.js`: conversation list, input, send, new conversation (↺). The
-  session is created on the first message.
+  session is created on the first message. If a send gets 404 (the server restarted
+  and lost the session), a new session is started and the message is sent once more.
 - Main screen: viewfinder shorter, tiles, scrollable conversation, input row above the
   bottom bar. The shutter stays where it is.
 - Bubbles built with `textContent`. An `ask_user` question is an emphasised assistant
   bubble; the answer is typed in the same input.
 - Proposal card: per change the label, `old → new` and the reason below; one **Apply**
   button. After apply: "Applied ✓", or the failed row with its detail; then
-  `refreshSettings()` so the tiles update. A newer message marks the card "Superseded"
-  and disables the button.
+  `refreshSettings()` so the tiles update. A newer message, once the server has accepted
+  it, marks a pending card "Superseded" and disables the button; a failed send leaves
+  the card as it was, because the server rolled back.
 - While waiting: "thinking…" indicator, send disabled.
 - `assistant: false` in status: input disabled, with a message explaining that
   `ANTHROPIC_API_KEY` and `LENSMIND_MODEL` must be set. Manual controls unchanged.
@@ -258,7 +274,9 @@ Errors, body `{"detail": "..."}` in the configured language:
 
 ## 6. Dependencies
 
-`anthropic` added to the main dependencies in `pyproject.toml`. It is imported only by
+`anthropic` added to the main dependencies in `pyproject.toml`. `deploy/install.sh`
+writes commented `ANTHROPIC_API_KEY` / `LENSMIND_MODEL` lines into a new
+`/etc/lensmind.env` and makes the file readable by root only (systemd reads it as root). It is imported only by
 `ClaudeProvider`, so tests and mock mode run without it. Installation on the Pi (wheels
 for `jiter` and `pydantic-core` on aarch64) is checked during deployment and recorded in
 the docs.
