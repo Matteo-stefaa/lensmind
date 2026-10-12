@@ -76,6 +76,15 @@ LENSMIND_MOCK=1 lensmind
 
 Open `http://localhost:8000`, or `http://<laptop-ip>:8000` from your phone.
 
+To try the assistant too, set an API key and a model:
+
+```bash
+ANTHROPIC_API_KEY=... LENSMIND_MODEL=<model id> LENSMIND_MOCK=1 lensmind
+```
+
+Write what you want to shoot; the assistant proposes settings with a reason for each,
+and nothing changes on the camera until you press Apply.
+
 ## Install on a Raspberry Pi
 
 ```bash
