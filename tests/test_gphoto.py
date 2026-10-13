@@ -174,34 +174,99 @@ def test_end_liveview_turns_viewfinder_off(cam: Any) -> None:
     assert not cam.status().liveview_active
 
 
-def test_capture_turns_viewfinder_off_first_and_collects_raw(cam: Any, gp: ModuleType) -> None:
-    raw = gp.CameraFilePath("/store_00010001/DCIM/100D3500", "DSC_0001.NEF")
-    fake().capture_events = [(gp.GP_EVENT_FILE_ADDED, raw)]
+NIKON_SHOT = "0x9207,0xfffffffe,0x1"
+
+
+def as_other_brand() -> None:
+    """Make the fake report a non-Nikon body, so capture goes through camera.capture()."""
+    manufacturer = fake()._find(fake().root, "manufacturer")
+    assert manufacturer is not None
+    manufacturer.value = "Canon Inc."
+
+
+def nikon_shot(gp: ModuleType, *names: str) -> list[tuple[int, object]]:
+    folder = "/store_00010001/DCIM/100D3500"
+    files = [(gp.GP_EVENT_FILE_ADDED, gp.CameraFilePath(folder, n)) for n in names]
+    return [*files, (gp.GP_EVENT_CAPTURE_COMPLETE, None)]
+
+
+def test_nikon_capture_sends_the_command_and_collects_the_files(cam: Any, gp: ModuleType) -> None:
+    # Verified on a D3500: libgphoto2's capture() can wait forever for DeviceReady after
+    # an autofocus shot; sending InitiateCaptureRecInMedia and reading events does not.
+    fake().capture_events = nikon_shot(gp, "DSC_0001.JPG", "DSC_0001.NEF")
     files = cam.capture()
     assert [f.name for f in files] == ["DSC_0001.JPG", "DSC_0001.NEF"]
     assert files[0].data == b"data:DSC_0001.JPG"
     entries = fake().log
     viewfinder_off = entries.index(("set_single_config", "viewfinder", 0))
-    assert viewfinder_off < entries.index(("capture", gp.GP_CAPTURE_IMAGE))
+    assert viewfinder_off < entries.index(("opcode", NIKON_SHOT))
+    assert ("capture", gp.GP_CAPTURE_IMAGE) not in entries
+
+
+def test_nikon_capture_to_the_memory_card_targets_the_card(cam: Any) -> None:
+    cam.set("capturetarget", "Memory card")
+    cam.capture()
+    assert ("opcode", "0x9207,0xfffffffe,0x0") in fake().log
+
+
+def test_nikon_capture_refused_by_the_body_is_explained(cam: Any, gp: ModuleType) -> None:
+    # The opcode widget reports every Nikon response (e.g. Out of Focus, 0xa002) as a
+    # bare GP_ERROR, so the cause can only be suggested.
+    fake().fail_next["opcode"] = gp.GP_ERROR
+    with pytest.raises(CameraError) as caught:
+        cam.capture()
+    assert not isinstance(caught.value, CameraDisconnected)
+    assert caught.value.status == 409
+    assert "refused" in caught.value.message
+
+
+def test_nikon_capture_without_files_times_out_and_reconnects(
+    cam: Any, gp: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import lensmind.camera.gphoto as module
+
+    monkeypatch.setattr(module, "CAPTURE_TIMEOUT_SECONDS", 0.05)
+    fake().capture_events = [(gp.GP_EVENT_UNKNOWN, "property changed")]
+    with pytest.raises(CameraDisconnected) as caught:
+        cam.capture()
+    assert caught.value.status == 504
+
+
+def test_nikon_capture_falls_back_when_the_command_is_unsupported(cam: Any, gp: ModuleType) -> None:
+    fake().fail_next["opcode"] = gp.GP_ERROR_NOT_SUPPORTED
+    assert [f.name for f in cam.capture()] == ["DSC_0001.JPG"]
+    assert ("capture", gp.GP_CAPTURE_IMAGE) in fake().log
+    fake().log.clear()
+    cam.capture()
+    assert not any(entry[0] == "opcode" for entry in fake().log)
 
 
 def test_capture_deletes_files_left_from_an_earlier_shot(cam: Any, gp: ModuleType) -> None:
     # Verified on a D3500: a NEF not downloaded stays in Internal RAM, comes back as
-    # GP_EVENT_FILE_ADDED in a later session, and libgphoto2 would hand it out as the
-    # first file of the next capture.
+    # GP_EVENT_FILE_ADDED in a later session, and would be taken for this shot's file.
     stale = gp.CameraFilePath("/", "capt0000.nef")
     fake().events = [(gp.GP_EVENT_FILE_ADDED, stale)]
     files = cam.capture()
     assert [f.name for f in files] == ["DSC_0001.JPG"]
     entries = fake().log
     deleted = entries.index(("file_delete", "/", "capt0000.nef"))
-    assert deleted < entries.index(("capture", gp.GP_CAPTURE_IMAGE))
+    assert deleted < entries.index(("opcode", NIKON_SHOT))
     assert ("file_get", "/", "capt0000.nef") not in entries
+
+
+def test_generic_capture_collects_raw(cam: Any, gp: ModuleType) -> None:
+    as_other_brand()
+    raw = gp.CameraFilePath("/store_00010001/DCIM/100D3500", "DSC_0001.NEF")
+    fake().capture_events = [(gp.GP_EVENT_FILE_ADDED, raw)]
+    files = cam.capture()
+    assert [f.name for f in files] == ["DSC_0001.JPG", "DSC_0001.NEF"]
+    assert not any(entry[0] == "opcode" for entry in fake().log)
 
 
 def test_capture_out_of_focus_explains_the_cause(cam: Any, gp: ModuleType) -> None:
     # Verified on a D3500 in AF-A: the body refuses to release and libgphoto2 returns
     # GP_ERROR; only the context carries "Out of Focus" (PTP 0xa002).
+    as_other_brand()
     fake().fail_next["capture"] = gp.GP_ERROR
     fake().fail_text["capture"] = "Out of Focus"
     with pytest.raises(CameraError) as caught:
@@ -212,6 +277,7 @@ def test_capture_out_of_focus_explains_the_cause(cam: Any, gp: ModuleType) -> No
 
 
 def test_generic_error_carries_the_driver_text(cam: Any, gp: ModuleType) -> None:
+    as_other_brand()
     fake().fail_next["capture"] = gp.GP_ERROR
     fake().fail_text["capture"] = "Card full"
     with pytest.raises(CameraError) as caught:
@@ -221,6 +287,7 @@ def test_generic_error_carries_the_driver_text(cam: Any, gp: ModuleType) -> None
 
 
 def test_driver_text_does_not_leak_into_the_next_error(cam: Any, gp: ModuleType) -> None:
+    as_other_brand()
     fake().fail_next["capture"] = gp.GP_ERROR
     fake().fail_text["capture"] = "Out of Focus"
     with pytest.raises(CameraError):

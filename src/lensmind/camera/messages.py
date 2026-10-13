@@ -19,6 +19,15 @@ MESSAGES: dict[str, dict[str, str]] = {
         "not_supported": "Operazione non supportata dalla fotocamera",
         "bad_parameters": "La fotocamera ha rifiutato il valore",
         "camera_error": "Errore della fotocamera ({error})",
+        "capture_refused": (
+            "La fotocamera ha rifiutato lo scatto. Di solito succede quando non riesce a "
+            "mettere a fuoco: inquadra un soggetto più contrastato o illuminato, oppure usa "
+            "la messa a fuoco manuale"
+        ),
+        "capture_timeout": (
+            "La fotocamera non ha consegnato la foto entro {seconds} secondi: "
+            "la connessione verrà riaperta"
+        ),
         "out_of_focus": (
             "La fotocamera non è riuscita a mettere a fuoco e non ha scattato: inquadra un "
             "soggetto più contrastato o illuminato, oppure usa la messa a fuoco manuale"
@@ -46,6 +55,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "not_supported": "Operation not supported by the camera",
         "bad_parameters": "The camera rejected the value",
         "camera_error": "Camera error ({error})",
+        "capture_refused": (
+            "The camera refused to shoot. This usually means it could not focus: aim at a "
+            "brighter or more contrasted subject, or switch to manual focus"
+        ),
+        "capture_timeout": (
+            "The camera did not deliver the photo within {seconds} seconds: "
+            "the connection will be reopened"
+        ),
         "out_of_focus": (
             "The camera could not focus and did not shoot: aim at a brighter or more "
             "contrasted subject, or switch to manual focus"

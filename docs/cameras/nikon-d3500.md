@@ -41,10 +41,31 @@ Same 117 widgets in M, A and AUTO; only read-only flags and some choice lists ch
   per shot.
 - In AF-A/AF-S the body refuses to release when autofocus does not lock (dim room,
   low-contrast subject). libgphoto2 returns a bare `GP_ERROR` (-1, "Unspecified error");
-  only the context error callback carries "Out of Focus" (PTP 0xa002). lensmind reads it
-  and answers 409 with an explanation. Setting `autofocus = Off` does not avoid it.
+  only the context error callback carries "Out of Focus" (PTP 0xa002). Setting
+  `autofocus = Off` does not avoid it: libgphoto2 then shoots without focusing and the
+  body still refuses (6/6 Out of Focus in AF-A).
 - Manual focus over USB: `focusmode2 = MF (selection)` is accepted and the shot goes
   through; `MF (fixed)` is rejected (`GP_ERROR_BAD_PARAMETERS`).
+- **libgphoto2's `capture()` can hang after an autofocus shot.** libgphoto2 2.5.34
+  (`camera_nikon_capture`) sends InitiateCaptureRecInMedia (0x9207) and then polls
+  DeviceReady (0x90c8) every 100 ms for up to 1000 s, without reading events and without
+  checking the context cancel callback. In AF-A/AF-S/auto-area with enough light about
+  every other shot is taken but DeviceReady answers Device Busy indefinitely; the call
+  only ends when the process is killed. The next session then receives that shot's JPEG
+  as its own first file and cannot download it ("You need to specify a folder starting
+  with /store_xxxxxxxxx/"). The `gphoto2` CLI hangs the same way, also with the card as
+  target. Not seen in MF, nor when autofocus fails (Out of Focus comes back in ~1.5 s).
+  `trigger_capture()` has the same 1000 s wait.
+- lensmind sends 0x9207 itself through the `opcode` widget
+  (`0x9207,0xfffffffe,0x1`: autofocus, camera RAM; `0x0` targets the card) and reads the
+  files from `wait_for_event`. Measured: 16/16 shots in AF-A, AF-S and MF where
+  `capture()` hung on 2 of 4 in the same conditions; ~2.3 s per RAW+JPEG shot to RAM.
+  The command itself returns Out of Focus (0xa002) when autofocus fails, but the widget
+  reports every Nikon response as a bare `GP_ERROR`, with no context or log text reaching
+  Python, so lensmind can only say the shot was refused and suggest focus as the usual cause.
+- With the card as target the same command works, but the file events arrive about
+  25 s after the shot (DeviceReady is OK after ~2 s). Cause not investigated.
+- A python-gphoto2 `CameraWidget` is a sequence of its children: a leaf widget is falsy.
 - In RAW+JPEG with Internal RAM the two files have different stems (`capt0001.jpg`,
   `capt0002.nef`); lensmind stores them under the first file's stem. `capture()` returns
   the JPEG; the NEF arrives as `GP_EVENT_FILE_ADDED` right after, then
