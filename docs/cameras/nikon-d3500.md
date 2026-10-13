@@ -39,6 +39,15 @@ Same 117 widgets in M, A and AUTO; only read-only flags and some choice lists ch
   dial on P/A/S/M.
 - `capturetarget = Internal RAM` by default; `imagequality = NEF+Fine` gives two files
   per shot.
+- In AF-A/AF-S the body refuses to release when autofocus does not lock (dim room,
+  low-contrast subject). libgphoto2 returns a bare `GP_ERROR` (-1, "Unspecified error");
+  only the context error callback carries "Out of Focus" (PTP 0xa002). lensmind reads it
+  and answers 409 with an explanation. Setting `autofocus = Off` does not avoid it.
+- Manual focus over USB: `focusmode2 = MF (selection)` is accepted and the shot goes
+  through; `MF (fixed)` is rejected (`GP_ERROR_BAD_PARAMETERS`).
+- In RAW+JPEG with Internal RAM the two files have different stems (`capt0001.jpg`,
+  `capt0002.nef`). A file not downloaded after a previous shot is delivered first on the
+  next capture.
 
 ## Hardware checklist (to run at the end of phase 1)
 

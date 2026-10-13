@@ -19,6 +19,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "not_supported": "Operazione non supportata dalla fotocamera",
         "bad_parameters": "La fotocamera ha rifiutato il valore",
         "camera_error": "Errore della fotocamera ({error})",
+        "out_of_focus": (
+            "La fotocamera non è riuscita a mettere a fuoco e non ha scattato: inquadra un "
+            "soggetto più contrastato o illuminato, oppure usa la messa a fuoco manuale"
+        ),
         "gphoto_missing": (
             "libgphoto2 non è installato: avvia con LENSMIND_MOCK=1 "
             "oppure installa con pip install '.[pi]'"
@@ -42,6 +46,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "not_supported": "Operation not supported by the camera",
         "bad_parameters": "The camera rejected the value",
         "camera_error": "Camera error ({error})",
+        "out_of_focus": (
+            "The camera could not focus and did not shoot: aim at a brighter or more "
+            "contrasted subject, or switch to manual focus"
+        ),
         "gphoto_missing": (
             "libgphoto2 is not installed: start with LENSMIND_MOCK=1 "
             "or install it with pip install '.[pi]'"

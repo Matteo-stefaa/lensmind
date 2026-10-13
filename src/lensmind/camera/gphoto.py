@@ -25,6 +25,8 @@ from lensmind.camera.messages import msg
 T = TypeVar("T")
 # After capture, a RAW+JPEG second file arrives as GP_EVENT_FILE_ADDED.
 SECOND_FILE_WAIT_SECONDS = 1.5
+# Context text of a Nikon release refused because autofocus did not lock (PTP 0xa002).
+OUT_OF_FOCUS = "out of focus"
 
 
 class GPhotoCamera:
@@ -47,8 +49,12 @@ class GPhotoCamera:
         self._containers = {gp.GP_WIDGET_WINDOW, gp.GP_WIDGET_SECTION}
         self._liveview = False
         self._exposed: set[str] | None = None
+        # The driver explains a generic GP_ERROR only through the context error callback.
+        self._context = gp.Context()
+        self._context_errors: list[str] = []
+        self._context_callback = self._context.set_error_func(self._on_context_error, None)
         self._camera = gp.Camera()
-        self._run(self._camera.init)
+        self._run(self._camera.init, self._context)
 
     # Camera protocol -----------------------------------------------------------
 
@@ -64,7 +70,7 @@ class GPhotoCamera:
         )
 
     def settings(self) -> list[SettingGroup]:
-        root = self._run(self._camera.get_config)
+        root = self._run(self._camera.get_config, self._context)
         groups: list[SettingGroup] = []
         seen: set[str] = set()
         for index in range(root.count_children()):
@@ -82,13 +88,17 @@ class GPhotoCamera:
         if self._exposed is None:
             self.settings()
         assert self._exposed is not None
-        widget = self._run(self._camera.get_single_config, name) if name in self._exposed else None
+        widget = (
+            self._run(self._camera.get_single_config, name, self._context)
+            if name in self._exposed
+            else None
+        )
         # Re-read the widget: read-only flags and choices change with the dial and lens.
         current = self._to_setting(widget) if widget is not None else None
         coerced = validate(current, name, value, self._lang)
         self._run(widget.set_value, coerced)
-        self._run(self._camera.set_single_config, name, widget)
-        fresh = self._to_setting(self._run(self._camera.get_single_config, name))
+        self._run(self._camera.set_single_config, name, widget, self._context)
+        fresh = self._to_setting(self._run(self._camera.get_single_config, name, self._context))
         assert fresh is not None
         return fresh
 
@@ -103,18 +113,22 @@ class GPhotoCamera:
             # Only a live view we know is on must be stopped before shooting.
             if self._liveview:
                 raise
-        first = self._run(self._camera.capture, gp.GP_CAPTURE_IMAGE)
+        first = self._run(self._camera.capture, gp.GP_CAPTURE_IMAGE, self._context)
         paths = [(first.folder, first.name)]
         deadline = time.monotonic() + SECOND_FILE_WAIT_SECONDS
         while (remaining := deadline - time.monotonic()) > 0:
-            event, data = self._run(self._camera.wait_for_event, max(1, int(remaining * 1000)))
+            event, data = self._run(
+                self._camera.wait_for_event, max(1, int(remaining * 1000)), self._context
+            )
             if event == gp.GP_EVENT_FILE_ADDED:
                 paths.append((data.folder, data.name))
             elif event == gp.GP_EVENT_TIMEOUT:
                 break
         files = []
         for folder, name in paths:
-            camera_file = self._run(self._camera.file_get, folder, name, gp.GP_FILE_TYPE_NORMAL)
+            camera_file = self._run(
+                self._camera.file_get, folder, name, gp.GP_FILE_TYPE_NORMAL, None, self._context
+            )
             data = bytes(memoryview(self._run(camera_file.get_data_and_size)))
             files.append(CapturedFile(name, data))
         return files
@@ -124,7 +138,7 @@ class GPhotoCamera:
             reason = liveview_block_reason(self._text("liveviewprohibit"))
             if reason:
                 raise CameraError(reason, 409)
-        camera_file = self._run(self._camera.capture_preview)
+        camera_file = self._run(self._camera.capture_preview, None, self._context)
         self._liveview = True
         return bytes(memoryview(self._run(camera_file.get_data_and_size)))
 
@@ -132,25 +146,34 @@ class GPhotoCamera:
         widget = self._single("viewfinder")
         if widget is not None:
             self._run(widget.set_value, 0)
-            self._run(self._camera.set_single_config, "viewfinder", widget)
+            self._run(self._camera.set_single_config, "viewfinder", widget, self._context)
         self._liveview = False
 
     def close(self) -> None:
         try:
-            self._camera.exit()
+            self._camera.exit(self._context)
         except self._gp.GPhoto2Error:
             pass
 
     # Internals -----------------------------------------------------------------
 
     def _run(self, function: Callable[..., T], *args: object) -> T:
+        self._context_errors.clear()
         try:
             return function(*args)
         except self._gp.GPhoto2Error as error:
             raise self._translate(error) from error
 
+    def _on_context_error(self, context: Any, text: bytes | str, data: object) -> None:
+        if isinstance(text, bytes):
+            text = text.decode("utf-8", "replace")
+        self._context_errors.append(text.strip())
+
     def _translate(self, error: Any) -> CameraError:
         gp, lang, code = self._gp, self._lang, error.code
+        cause = "; ".join(t for t in self._context_errors if t)
+        if code == gp.GP_ERROR and OUT_OF_FOCUS in cause.lower():
+            return CameraError(msg(lang, "out_of_focus"), 409)
         if code == gp.GP_ERROR_BAD_PARAMETERS:
             return CameraError(msg(lang, "bad_parameters"), 422)
         if code == gp.GP_ERROR_NOT_SUPPORTED:
@@ -158,7 +181,7 @@ class GPhotoCamera:
         if code == gp.GP_ERROR_CAMERA_BUSY:
             return CameraError(msg(lang, "camera_busy"), 503)
         if code == gp.GP_ERROR:
-            return CameraError(msg(lang, "camera_error", error=error), 500)
+            return CameraError(msg(lang, "camera_error", error=cause or error), 500)
         if code == gp.GP_ERROR_MODEL_NOT_FOUND:
             return CameraDisconnected(msg(lang, "not_connected"), 503)
         if code == gp.GP_ERROR_IO_USB_CLAIM:
@@ -169,7 +192,7 @@ class GPhotoCamera:
         """The widget called `name`, or None when the camera does not have it."""
         gp = self._gp
         try:
-            return self._camera.get_single_config(name)
+            return self._camera.get_single_config(name, self._context)
         except gp.GPhoto2Error as error:
             if error.code in (gp.GP_ERROR_BAD_PARAMETERS, gp.GP_ERROR_NOT_SUPPORTED, gp.GP_ERROR):
                 return None

@@ -185,6 +185,39 @@ def test_capture_turns_viewfinder_off_first_and_collects_raw(cam: Any, gp: Modul
     assert viewfinder_off < entries.index(("capture", gp.GP_CAPTURE_IMAGE))
 
 
+def test_capture_out_of_focus_explains_the_cause(cam: Any, gp: ModuleType) -> None:
+    # Verified on a D3500 in AF-A: the body refuses to release and libgphoto2 returns
+    # GP_ERROR; only the context carries "Out of Focus" (PTP 0xa002).
+    fake().fail_next["capture"] = gp.GP_ERROR
+    fake().fail_text["capture"] = "Out of Focus"
+    with pytest.raises(CameraError) as caught:
+        cam.capture()
+    assert not isinstance(caught.value, CameraDisconnected)
+    assert caught.value.status == 409
+    assert "could not focus" in caught.value.message
+
+
+def test_generic_error_carries_the_driver_text(cam: Any, gp: ModuleType) -> None:
+    fake().fail_next["capture"] = gp.GP_ERROR
+    fake().fail_text["capture"] = "Card full"
+    with pytest.raises(CameraError) as caught:
+        cam.capture()
+    assert caught.value.status == 500
+    assert "Card full" in caught.value.message
+
+
+def test_driver_text_does_not_leak_into_the_next_error(cam: Any, gp: ModuleType) -> None:
+    fake().fail_next["capture"] = gp.GP_ERROR
+    fake().fail_text["capture"] = "Out of Focus"
+    with pytest.raises(CameraError):
+        cam.capture()
+    fake().fail_next["capture"] = gp.GP_ERROR
+    with pytest.raises(CameraError) as caught:
+        cam.capture()
+    assert caught.value.status == 500
+    assert "could not focus" not in caught.value.message
+
+
 def test_close_swallows_errors(cam: Any, gp: ModuleType) -> None:
     fake().fail_next["exit"] = gp.GP_ERROR_IO
     cam.close()
