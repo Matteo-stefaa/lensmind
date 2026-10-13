@@ -46,8 +46,13 @@ Same 117 widgets in M, A and AUTO; only read-only flags and some choice lists ch
 - Manual focus over USB: `focusmode2 = MF (selection)` is accepted and the shot goes
   through; `MF (fixed)` is rejected (`GP_ERROR_BAD_PARAMETERS`).
 - In RAW+JPEG with Internal RAM the two files have different stems (`capt0001.jpg`,
-  `capt0002.nef`). A file not downloaded after a previous shot is delivered first on the
-  next capture.
+  `capt0002.nef`); lensmind stores them under the first file's stem. `capture()` returns
+  the JPEG; the NEF arrives as `GP_EVENT_FILE_ADDED` right after, then
+  `GP_EVENT_CAPTURE_COMPLETE` about 0.7 s later.
+- A file never downloaded stays in Internal RAM across sessions. It comes back as
+  `GP_EVENT_FILE_ADDED` (folder `/`) before any capture, and libgphoto2 would return it as
+  the next capture's first file. `file_delete` removes it without downloading (instant);
+  lensmind drains events and deletes such leftovers before every capture.
 
 ## Hardware checklist (to run at the end of phase 1)
 

@@ -3,6 +3,7 @@
 # Postponed annotations: the `set` method below would shadow `set[str]` in the class body.
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from typing import Any, TypeVar
@@ -22,7 +23,11 @@ from lensmind.camera.base import (
 )
 from lensmind.camera.messages import msg
 
+logger = logging.getLogger(__name__)
 T = TypeVar("T")
+# Before capture, queued events are read with this per-call wait, for at most DRAIN_SECONDS.
+DRAIN_POLL_MS = 100
+DRAIN_SECONDS = 3.0
 # After capture, a RAW+JPEG second file arrives as GP_EVENT_FILE_ADDED.
 SECOND_FILE_WAIT_SECONDS = 1.5
 # Context text of a Nikon release refused because autofocus did not lock (PTP 0xa002).
@@ -113,6 +118,7 @@ class GPhotoCamera:
             # Only a live view we know is on must be stopped before shooting.
             if self._liveview:
                 raise
+        self._drop_leftover_files()
         first = self._run(self._camera.capture, gp.GP_CAPTURE_IMAGE, self._context)
         paths = [(first.folder, first.name)]
         deadline = time.monotonic() + SECOND_FILE_WAIT_SECONDS
@@ -132,6 +138,31 @@ class GPhotoCamera:
             data = bytes(memoryview(self._run(camera_file.get_data_and_size)))
             files.append(CapturedFile(name, data))
         return files
+
+    def _drop_leftover_files(self) -> None:
+        """Delete files an earlier shot left in the camera's RAM.
+
+        A file that was never downloaded stays in Internal RAM, comes back as
+        GP_EVENT_FILE_ADDED, and libgphoto2 would return it as this capture's first file.
+        """
+        gp = self._gp
+        deadline = time.monotonic() + DRAIN_SECONDS
+        leftovers = []
+        while time.monotonic() < deadline:
+            event, data = self._run(self._camera.wait_for_event, DRAIN_POLL_MS, self._context)
+            if event == gp.GP_EVENT_TIMEOUT:
+                break
+            if event == gp.GP_EVENT_FILE_ADDED:
+                leftovers.append((data.folder, data.name))
+        for folder, name in leftovers:
+            path = f"{folder.rstrip('/')}/{name}"
+            logger.warning("deleting %s, left in the camera by an earlier shot", path)
+            try:
+                self._run(self._camera.file_delete, folder, name, self._context)
+            except CameraDisconnected:
+                raise
+            except CameraError:
+                logger.warning("could not delete %s", path, exc_info=True)
 
     def preview(self) -> bytes:
         if not self._liveview:

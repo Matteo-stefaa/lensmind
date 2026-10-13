@@ -212,7 +212,10 @@ class Camera:
         self.fail_next: dict[str, int] = {}
         # Text the driver sends to the context when the matching fail_next fires.
         self.fail_text: dict[str, str] = {}
+        # Events already queued, and events the next capture produces (e.g. the RAW file).
         self.events: list[tuple[int, object]] = []
+        self.capture_events: list[tuple[int, object]] = []
+        self.files: list[CameraFilePath] = []
         self.abilities = CameraAbilities()
         # Like a Nikon body: ending live view when it is not running is refused.
         self.in_liveview = False
@@ -265,6 +268,8 @@ class Camera:
 
     def capture(self, kind: int, context: Context | None = None) -> CameraFilePath:
         self._call("capture", kind, context=context)
+        self.events.extend(self.capture_events)
+        self.capture_events = []
         return CameraFilePath("/store_00010001/DCIM/100D3500", "DSC_0001.JPG")
 
     def wait_for_event(self, timeout_ms: int, context: Context | None = None) -> tuple[int, object]:
@@ -283,6 +288,10 @@ class Camera:
         _check_types(camera_file, context)
         self._call("file_get", folder, name, context=context)
         return CameraFile(f"data:{name}".encode())
+
+    def file_delete(self, folder: str, name: str, context: Context | None = None) -> None:
+        self._call("file_delete", folder, name, context=context)
+        _check_types(None, context)
 
     def capture_preview(
         self, camera_file: CameraFile | None = None, context: Context | None = None
