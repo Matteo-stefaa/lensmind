@@ -1,6 +1,7 @@
 """In-memory stand-in for python-gphoto2, built from a real `--list-all-config` dump."""
 
 import copy
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -67,6 +68,33 @@ class GPhoto2Error(Exception):
     def __init__(self, code: int) -> None:
         super().__init__(f"[{code}] fake gphoto2 error")
         self.code = code
+
+
+ErrorFunc = Callable[[object, bytes, object], None]
+
+
+class Context:
+    """Like gp.Context: the camera driver reports the cause of a failure through it."""
+
+    def __init__(self) -> None:
+        self._error_func: ErrorFunc | None = None
+        self._data: object = None
+
+    def set_error_func(self, func: ErrorFunc, data: object) -> object:
+        self._error_func, self._data = func, data
+        return object()
+
+    def error(self, text: str) -> None:
+        if self._error_func is not None:
+            self._error_func(self, text.encode(), self._data)
+
+
+def _check_types(camera_file: object, context: object) -> None:
+    """Catch arguments in the wrong position, as the SWIG bindings do."""
+    if camera_file is not None and not isinstance(camera_file, CameraFile):
+        raise TypeError(f"expected CameraFile, got {type(camera_file).__name__}")
+    if context is not None and not isinstance(context, Context):
+        raise TypeError(f"expected Context, got {type(context).__name__}")
 
 
 class CameraWidget:
@@ -182,43 +210,53 @@ class Camera:
         self.root = build_tree(DUMP_PATH)
         self.log: list[tuple[object, ...]] = []
         self.fail_next: dict[str, int] = {}
+        # Text the driver sends to the context when the matching fail_next fires.
+        self.fail_text: dict[str, str] = {}
+        # Events already queued, and events the next capture produces (e.g. the RAW file).
         self.events: list[tuple[int, object]] = []
+        self.capture_events: list[tuple[int, object]] = []
+        self.files: list[CameraFilePath] = []
         self.abilities = CameraAbilities()
         # Like a Nikon body: ending live view when it is not running is refused.
         self.in_liveview = False
         last_camera = self
 
-    def _call(self, method: str, *args: object) -> None:
+    def _call(self, method: str, *args: object, context: Context | None = None) -> None:
         self.log.append((method, *args))
         code = self.fail_next.pop(method, None)
         if code is not None:
+            text = self.fail_text.pop(method, None)
+            if text is not None and context is not None:
+                context.error(text)
             raise GPhoto2Error(code)
 
-    def init(self) -> None:
-        self._call("init")
+    def init(self, context: Context | None = None) -> None:
+        self._call("init", context=context)
         if INIT_ERROR is not None:
             raise GPhoto2Error(INIT_ERROR)
 
-    def exit(self) -> None:
-        self._call("exit")
+    def exit(self, context: Context | None = None) -> None:
+        self._call("exit", context=context)
 
     def get_abilities(self) -> CameraAbilities:
         self._call("get_abilities")
         return self.abilities
 
-    def get_config(self) -> CameraWidget:
-        self._call("get_config")
+    def get_config(self, context: Context | None = None) -> CameraWidget:
+        self._call("get_config", context=context)
         return self.root
 
-    def get_single_config(self, name: str) -> CameraWidget:
-        self._call("get_single_config", name)
+    def get_single_config(self, name: str, context: Context | None = None) -> CameraWidget:
+        self._call("get_single_config", name, context=context)
         widget = self._find(self.root, name)
         if widget is None:
             raise GPhoto2Error(GP_ERROR_BAD_PARAMETERS)
         return copy.copy(widget)
 
-    def set_single_config(self, name: str, widget: CameraWidget) -> None:
-        self._call("set_single_config", name, widget.get_value())
+    def set_single_config(
+        self, name: str, widget: CameraWidget, context: Context | None = None
+    ) -> None:
+        self._call("set_single_config", name, widget.get_value(), context=context)
         target = self._find(self.root, name)
         if target is None:
             raise GPhoto2Error(GP_ERROR_BAD_PARAMETERS)
@@ -228,20 +266,38 @@ class Camera:
             self.in_liveview = False
         target.value = widget.get_value()
 
-    def capture(self, kind: int) -> CameraFilePath:
-        self._call("capture", kind)
+    def capture(self, kind: int, context: Context | None = None) -> CameraFilePath:
+        self._call("capture", kind, context=context)
+        self.events.extend(self.capture_events)
+        self.capture_events = []
         return CameraFilePath("/store_00010001/DCIM/100D3500", "DSC_0001.JPG")
 
-    def wait_for_event(self, timeout_ms: int) -> tuple[int, object]:
-        self._call("wait_for_event")
+    def wait_for_event(self, timeout_ms: int, context: Context | None = None) -> tuple[int, object]:
+        self._call("wait_for_event", context=context)
         return self.events.pop(0) if self.events else (GP_EVENT_TIMEOUT, None)
 
-    def file_get(self, folder: str, name: str, kind: int) -> CameraFile:
-        self._call("file_get", folder, name)
+    # Like python-gphoto2: an optional output CameraFile comes before the context.
+    def file_get(
+        self,
+        folder: str,
+        name: str,
+        kind: int,
+        camera_file: CameraFile | None = None,
+        context: Context | None = None,
+    ) -> CameraFile:
+        _check_types(camera_file, context)
+        self._call("file_get", folder, name, context=context)
         return CameraFile(f"data:{name}".encode())
 
-    def capture_preview(self) -> CameraFile:
-        self._call("capture_preview")
+    def file_delete(self, folder: str, name: str, context: Context | None = None) -> None:
+        self._call("file_delete", folder, name, context=context)
+        _check_types(None, context)
+
+    def capture_preview(
+        self, camera_file: CameraFile | None = None, context: Context | None = None
+    ) -> CameraFile:
+        _check_types(camera_file, context)
+        self._call("capture_preview", context=context)
         self.in_liveview = True
         return CameraFile(b"\xff\xd8fake-preview\xff\xd9")
 

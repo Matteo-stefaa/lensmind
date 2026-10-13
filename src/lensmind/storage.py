@@ -29,7 +29,7 @@ class PhotoStore:
         self._clock = clock
 
     def save(self, files: list[CapturedFile]) -> Shot:
-        base_names = [_safe_name(f.name) for f in files]
+        base_names = _shot_names([_safe_name(f.name) for f in files])
         prefix = self._free_prefix(base_names)
         names = []
         for captured, base_name in zip(files, base_names, strict=True):
@@ -87,6 +87,23 @@ class PhotoStore:
                 thumb.save(self._thumbs / f"{name}.jpg", "JPEG", quality=80)
         except (OSError, Image.DecompressionBombError):
             pass  # the original is kept; the gallery shows it without a thumbnail
+
+
+def _shot_names(names: list[str]) -> list[str]:
+    """Give the files of one shot the first file's stem, so the gallery groups them.
+
+    Some bodies number every file (capt0001.jpg, capt0002.nef); a repeated extension
+    keeps a numbered name rather than overwriting.
+    """
+    stem = Path(names[0]).stem
+    out: list[str] = []
+    for name in names:
+        candidate, attempt = f"{stem}{Path(name).suffix}", 1
+        while candidate in out:
+            attempt += 1
+            candidate = f"{stem}-{attempt}{Path(name).suffix}"
+        out.append(candidate)
+    return out
 
 
 def _safe_name(name: str) -> str:

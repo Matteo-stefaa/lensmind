@@ -176,13 +176,60 @@ def test_end_liveview_turns_viewfinder_off(cam: Any) -> None:
 
 def test_capture_turns_viewfinder_off_first_and_collects_raw(cam: Any, gp: ModuleType) -> None:
     raw = gp.CameraFilePath("/store_00010001/DCIM/100D3500", "DSC_0001.NEF")
-    fake().events = [(gp.GP_EVENT_FILE_ADDED, raw)]
+    fake().capture_events = [(gp.GP_EVENT_FILE_ADDED, raw)]
     files = cam.capture()
     assert [f.name for f in files] == ["DSC_0001.JPG", "DSC_0001.NEF"]
     assert files[0].data == b"data:DSC_0001.JPG"
     entries = fake().log
     viewfinder_off = entries.index(("set_single_config", "viewfinder", 0))
     assert viewfinder_off < entries.index(("capture", gp.GP_CAPTURE_IMAGE))
+
+
+def test_capture_deletes_files_left_from_an_earlier_shot(cam: Any, gp: ModuleType) -> None:
+    # Verified on a D3500: a NEF not downloaded stays in Internal RAM, comes back as
+    # GP_EVENT_FILE_ADDED in a later session, and libgphoto2 would hand it out as the
+    # first file of the next capture.
+    stale = gp.CameraFilePath("/", "capt0000.nef")
+    fake().events = [(gp.GP_EVENT_FILE_ADDED, stale)]
+    files = cam.capture()
+    assert [f.name for f in files] == ["DSC_0001.JPG"]
+    entries = fake().log
+    deleted = entries.index(("file_delete", "/", "capt0000.nef"))
+    assert deleted < entries.index(("capture", gp.GP_CAPTURE_IMAGE))
+    assert ("file_get", "/", "capt0000.nef") not in entries
+
+
+def test_capture_out_of_focus_explains_the_cause(cam: Any, gp: ModuleType) -> None:
+    # Verified on a D3500 in AF-A: the body refuses to release and libgphoto2 returns
+    # GP_ERROR; only the context carries "Out of Focus" (PTP 0xa002).
+    fake().fail_next["capture"] = gp.GP_ERROR
+    fake().fail_text["capture"] = "Out of Focus"
+    with pytest.raises(CameraError) as caught:
+        cam.capture()
+    assert not isinstance(caught.value, CameraDisconnected)
+    assert caught.value.status == 409
+    assert "could not focus" in caught.value.message
+
+
+def test_generic_error_carries_the_driver_text(cam: Any, gp: ModuleType) -> None:
+    fake().fail_next["capture"] = gp.GP_ERROR
+    fake().fail_text["capture"] = "Card full"
+    with pytest.raises(CameraError) as caught:
+        cam.capture()
+    assert caught.value.status == 500
+    assert "Card full" in caught.value.message
+
+
+def test_driver_text_does_not_leak_into_the_next_error(cam: Any, gp: ModuleType) -> None:
+    fake().fail_next["capture"] = gp.GP_ERROR
+    fake().fail_text["capture"] = "Out of Focus"
+    with pytest.raises(CameraError):
+        cam.capture()
+    fake().fail_next["capture"] = gp.GP_ERROR
+    with pytest.raises(CameraError) as caught:
+        cam.capture()
+    assert caught.value.status == 500
+    assert "could not focus" not in caught.value.message
 
 
 def test_close_swallows_errors(cam: Any, gp: ModuleType) -> None:
