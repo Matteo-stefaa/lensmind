@@ -31,6 +31,21 @@ def test_save_prefixes_and_groups(tmp_path: Path) -> None:
     assert (tmp_path / "20261007-210133_DSC_0001.NEF").read_bytes() == b"raw"
 
 
+def test_files_of_one_shot_share_a_stem(tmp_path: Path) -> None:
+    # A D3500 capturing to Internal RAM numbers each file: capt0001.jpg, capt0002.nef.
+    store = store_at(tmp_path)
+    shot = store.save([CapturedFile("capt0001.jpg", JPEG), CapturedFile("capt0002.nef", b"raw")])
+    assert shot.files == ["20261007-210133_capt0001.jpg", "20261007-210133_capt0001.nef"]
+    assert [s.files for s in store.list_shots()] == [shot.files]
+
+
+def test_same_extension_twice_is_not_overwritten(tmp_path: Path) -> None:
+    store = store_at(tmp_path)
+    shot = store.save([CapturedFile("capt0001.jpg", JPEG), CapturedFile("capt0002.jpg", b"x")])
+    assert len(set(shot.files)) == 2
+    assert len([p for p in tmp_path.iterdir() if p.is_file()]) == 2
+
+
 def test_thumbnail_is_a_small_jpeg(tmp_path: Path) -> None:
     store = store_at(tmp_path)
     shot = store.save(raw_plus_jpeg())
