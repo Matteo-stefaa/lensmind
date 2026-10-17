@@ -30,6 +30,13 @@ DRAIN_POLL_MS = 100
 DRAIN_SECONDS = 3.0
 # After capture, a RAW+JPEG second file arrives as GP_EVENT_FILE_ADDED.
 SECOND_FILE_WAIT_SECONDS = 1.5
+# Nikon InitiateCaptureRecInMedia, sent through the "opcode" widget: autofocus on
+# (0xfffffffe), then the target, 0x1 for the camera's RAM and 0x0 for the card.
+NIKON_CAPTURE = "0x9207,0xfffffffe"
+# Files of a Nikon shot are read from events for at most this long. The longest timed
+# exposure of the bodies tested (D3500) is 30 s.
+CAPTURE_TIMEOUT_SECONDS = 45.0
+EVENT_POLL_MS = 200
 # Context text of a Nikon release refused because autofocus did not lock (PTP 0xa002).
 OUT_OF_FOCUS = "out of focus"
 
@@ -54,6 +61,7 @@ class GPhotoCamera:
         self._containers = {gp.GP_WIDGET_WINDOW, gp.GP_WIDGET_SECTION}
         self._liveview = False
         self._exposed: set[str] | None = None
+        self._nikon_capture: bool | None = None  # decided at the first capture
         # The driver explains a generic GP_ERROR only through the context error callback.
         self._context = gp.Context()
         self._context_errors: list[str] = []
@@ -119,6 +127,25 @@ class GPhotoCamera:
             if self._liveview:
                 raise
         self._drop_leftover_files()
+        if self._nikon_capture is None:
+            nikon = (self._text("manufacturer") or "").startswith("Nikon")
+            # A leaf CameraWidget is falsy (it is a sequence of its children): compare to None.
+            self._nikon_capture = nikon and self._single("opcode") is not None
+        paths = self._capture_nikon() if self._nikon_capture else None
+        if paths is None:
+            self._nikon_capture = False
+            paths = self._capture_generic()
+        files = []
+        for folder, name in paths:
+            camera_file = self._run(
+                self._camera.file_get, folder, name, gp.GP_FILE_TYPE_NORMAL, None, self._context
+            )
+            data = bytes(memoryview(self._run(camera_file.get_data_and_size)))
+            files.append(CapturedFile(name, data))
+        return files
+
+    def _capture_generic(self) -> list[tuple[str, str]]:
+        gp = self._gp
         first = self._run(self._camera.capture, gp.GP_CAPTURE_IMAGE, self._context)
         paths = [(first.folder, first.name)]
         deadline = time.monotonic() + SECOND_FILE_WAIT_SECONDS
@@ -130,20 +157,61 @@ class GPhotoCamera:
                 paths.append((data.folder, data.name))
             elif event == gp.GP_EVENT_TIMEOUT:
                 break
-        files = []
-        for folder, name in paths:
-            camera_file = self._run(
-                self._camera.file_get, folder, name, gp.GP_FILE_TYPE_NORMAL, None, self._context
-            )
-            data = bytes(memoryview(self._run(camera_file.get_data_and_size)))
-            files.append(CapturedFile(name, data))
-        return files
+        return paths
+
+    def _capture_nikon(self) -> list[tuple[str, str]] | None:
+        """Shoot with InitiateCaptureRecInMedia and collect the files from events.
+
+        After the shot, libgphoto2's capture() polls DeviceReady for up to 1000 s
+        without reading events; on a D3500 after an autofocus shot that wait lasted
+        until another session was opened. The raw command returns once the shot is
+        taken or refused, and the files are read here with a bounded wait.
+        Returns None when the body does not support the command.
+        """
+        gp = self._gp
+        widget = self._run(self._camera.get_single_config, "opcode", self._context)
+        self._run(widget.set_value, f"{NIKON_CAPTURE},{self._capture_target()}")
+        self._context_errors.clear()
+        try:
+            self._camera.set_single_config("opcode", widget, self._context)
+        except gp.GPhoto2Error as error:
+            if error.code == gp.GP_ERROR_NOT_SUPPORTED:
+                return None
+            if error.code == gp.GP_ERROR:
+                # Every Nikon response code (Out of Focus is 0xa002) arrives as GP_ERROR.
+                raise CameraError(msg(self._lang, "capture_refused"), 409) from error
+            raise self._translate(error) from error
+        paths: list[tuple[str, str]] = []
+        complete = False
+        deadline = time.monotonic() + CAPTURE_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            event, data = self._run(self._camera.wait_for_event, EVENT_POLL_MS, self._context)
+            if event == gp.GP_EVENT_FILE_ADDED:
+                paths.append((data.folder, data.name))
+            elif event == gp.GP_EVENT_CAPTURE_COMPLETE:
+                complete = True
+            elif event == gp.GP_EVENT_TIMEOUT and complete and paths:
+                return paths
+        if paths:
+            return paths
+        seconds = int(CAPTURE_TIMEOUT_SECONDS)
+        # A new session releases a body stuck after a shot, so make the session reconnect.
+        raise CameraDisconnected(msg(self._lang, "capture_timeout", seconds=seconds), 504)
+
+    def _capture_target(self) -> str:
+        """0x1 for the camera's RAM, 0x0 for the card (libgphoto2 lists RAM first)."""
+        widget = self._single("capturetarget")
+        if widget is None:
+            return "0x1"
+        choices = [widget.get_choice(i) for i in range(widget.count_choices())]
+        value = widget.get_value()
+        return "0x0" if value in choices and choices.index(value) == 1 else "0x1"
 
     def _drop_leftover_files(self) -> None:
         """Delete files an earlier shot left in the camera's RAM.
 
         A file that was never downloaded stays in Internal RAM, comes back as
-        GP_EVENT_FILE_ADDED, and libgphoto2 would return it as this capture's first file.
+        GP_EVENT_FILE_ADDED, and would be taken for a file of this capture.
         """
         gp = self._gp
         deadline = time.monotonic() + DRAIN_SECONDS

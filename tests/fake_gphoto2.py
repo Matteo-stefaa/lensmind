@@ -30,6 +30,9 @@ GP_ERROR_CAMERA_BUSY = -110
 GP_CAPTURE_IMAGE = 0
 GP_FILE_TYPE_NORMAL = 1
 GP_EVENT_UNKNOWN, GP_EVENT_TIMEOUT, GP_EVENT_FILE_ADDED = 0, 1, 2
+GP_EVENT_FOLDER_ADDED, GP_EVENT_CAPTURE_COMPLETE = 3, 4
+# Nikon InitiateCaptureRecInMedia sent through the "opcode" widget.
+NIKON_CAPTURE_OPCODE = "0x9207"
 GP_OPERATION_CONFIG = 1
 GP_OPERATION_CAPTURE_PREVIEW = 8
 
@@ -97,6 +100,11 @@ def _check_types(camera_file: object, context: object) -> None:
         raise TypeError(f"expected Context, got {type(context).__name__}")
 
 
+def _default_shot() -> list[tuple[int, object]]:
+    jpeg = CameraFilePath("/store_00010001/DCIM/100D3500", "DSC_0001.JPG")
+    return [(GP_EVENT_FILE_ADDED, jpeg), (GP_EVENT_CAPTURE_COMPLETE, None)]
+
+
 class CameraWidget:
     def __init__(
         self,
@@ -136,6 +144,10 @@ class CameraWidget:
         return int(self.readonly)
 
     def count_children(self) -> int:
+        return len(self.children)
+
+    def __len__(self) -> int:
+        # Like python-gphoto2: a widget is a sequence of its children, so a leaf is falsy.
         return len(self.children)
 
     def get_child(self, index: int) -> "CameraWidget":
@@ -264,6 +276,13 @@ class Camera:
             if not self.in_liveview:
                 raise GPhoto2Error(GP_ERROR)  # PTP NotLiveView, reported as a generic error
             self.in_liveview = False
+        if name == "opcode" and str(widget.get_value()).startswith(NIKON_CAPTURE_OPCODE):
+            # Like a D3500: the shot is taken during the command; its files and the
+            # completion arrive as events afterwards.
+            self._call("opcode", widget.get_value(), context=context)
+            self.events.extend(self.capture_events or _default_shot())
+            self.capture_events = []
+            return
         target.value = widget.get_value()
 
     def capture(self, kind: int, context: Context | None = None) -> CameraFilePath:

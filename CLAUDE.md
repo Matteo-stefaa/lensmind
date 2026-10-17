@@ -131,6 +131,9 @@ Checked against python-gphoto2 2.6.4 (bundles libgphoto2 2.5.34, which lists
   RAW+JPEG a second file arrives as `GP_EVENT_FILE_ADDED`; poll `wait_for_event` for
   about 1.5 s. Download with `file_get(folder, name, gp.GP_FILE_TYPE_NORMAL)` and
   `bytes(memoryview(camera_file.get_data_and_size()))`.
+  On Nikon bodies this call can hang for up to 1000 s after an autofocus shot (seen on
+  the D3500), so lensmind sends InitiateCaptureRecInMedia through the `opcode` widget
+  and reads the files from events instead; see docs/cameras/nikon-d3500.md.
 - Preview: `camera.capture_preview()`; support is advertised by
   `abilities.operations & gp.GP_OPERATION_CAPTURE_PREVIEW`.
 - With no camera attached, `init()` raises `GP_ERROR_MODEL_NOT_FOUND`;
