@@ -1,8 +1,14 @@
+import base64
+import io
+import json
+import os
+from pathlib import Path
 from typing import Any
 
 import pytest
+from PIL import Image
 
-from lensmind.assistant.loop import Assistant, AssistantError
+from lensmind.assistant.loop import IMAGE_REMOVED, Assistant, AssistantError
 from lensmind.assistant.prompts import system_prompt
 from lensmind.assistant.provider import (
     FakeProvider,
@@ -14,6 +20,7 @@ from lensmind.assistant.provider import (
 )
 from lensmind.camera.base import CameraError, Setting, SettingValue
 from lensmind.camera.mock import MockCamera
+from lensmind.storage import PhotoStore
 
 PROPOSE_ISO = tool_use_block(
     "p1",
@@ -320,3 +327,134 @@ def test_empty_reply_is_reported_and_rolled_back(content: list[dict[str, Any]]) 
     assert caught.value.status == 502
     assert assistant.get(cid).history == []
     assert assistant.send(cid, "hello").reply == "Hi."
+
+
+# evaluate_shot ---------------------------------------------------------------
+
+EVALUATE = tool_use_block("e1", "evaluate_shot")
+
+
+def make_with_photos(
+    script: list[ModelReply | Exception], root: Path, now: float = 1_000_000.0
+) -> tuple[Assistant, MockCamera, FakeProvider, str, PhotoStore]:
+    camera = MockCamera(lang="en")
+    provider = FakeProvider(script)
+    store = PhotoStore(root)
+    assistant = Assistant(camera, provider, "en", 6, photos=store, clock=lambda: now)
+    return assistant, camera, provider, assistant.start().id, store
+
+
+def shoot(camera: MockCamera, store: PhotoStore, when: float) -> None:
+    shot = store.save(camera.capture())
+    for name in shot.files:
+        os.utime(store.root / name, (when, when))
+
+
+def evaluation(provider: FakeProvider, request: int = -1) -> tuple[dict[str, Any], Any]:
+    result = provider.requests[request][-1]["content"][0]
+    assert result["tool_use_id"] == "e1"
+    text, image = result["content"]
+    return json.loads(text["text"]), image
+
+
+def test_evaluate_sends_a_small_image_with_stats(tmp_path: Path) -> None:
+    assistant, camera, provider, cid, store = make_with_photos(
+        [reply(EVALUATE), reply(text_block("Well exposed."))], tmp_path
+    )
+    shoot(camera, store, 999_990.0)
+    turn = assistant.send(cid, "how is it?")
+    assert turn.reply == "Well exposed."
+    data, image = evaluation(provider)
+    assert data["file"].endswith("DSC_0001.JPG")
+    assert data["seconds_since_shot"] == 10
+    assert data["taken_after_last_applied_proposal"] is None
+    assert data["shooting_data"]["iso"] == 100
+    assert 0 <= data["stats"]["clipped_highlights_percent"] <= 100
+    assert image["type"] == "image"
+    assert image["source"]["media_type"] == "image/jpeg"
+    with Image.open(io.BytesIO(base64.b64decode(image["source"]["data"]))) as small:
+        assert max(small.size) <= 1024
+
+
+def test_evaluate_reports_overexposure(tmp_path: Path) -> None:
+    assistant, camera, provider, cid, store = make_with_photos(
+        [reply(EVALUATE), reply(text_block("Too bright."))], tmp_path
+    )
+    shoot(camera, store, 999_990.0)
+    camera.set("iso", "3200")
+    shoot(camera, store, 999_995.0)
+    assistant.send(cid, "how is it?")
+    data, _ = evaluation(provider)
+    assert data["shooting_data"]["iso"] == 3200
+    assert data["stats"]["clipped_highlights_percent"] > 50
+
+
+def test_evaluate_tells_whether_the_shot_follows_the_applied_proposal(tmp_path: Path) -> None:
+    clock = [1_000.0]
+    camera = MockCamera(lang="en")
+    provider = FakeProvider(
+        [reply(PROPOSE_ISO), reply(EVALUATE), reply(text_block("Old shot.")), reply(EVALUATE)]
+        + [reply(text_block("New shot."))]
+    )
+    store = PhotoStore(tmp_path)
+    assistant = Assistant(camera, provider, "en", 6, photos=store, clock=lambda: clock[0])
+    cid = assistant.start().id
+    shoot(camera, store, 900.0)
+    proposal = assistant.send(cid, "too dark").proposal
+    assert proposal is not None
+    assistant.apply(cid, proposal.id)
+    assistant.send(cid, "look")
+    assert evaluation(provider)[0]["taken_after_last_applied_proposal"] is False
+    shoot(camera, store, 1_100.0)
+    clock[0] = 1_200.0
+    assistant.send(cid, "and now?")
+    assert evaluation(provider)[0]["taken_after_last_applied_proposal"] is True
+
+
+def test_evaluate_without_a_shot_asks_for_one(tmp_path: Path) -> None:
+    assistant, _, provider, cid, _ = make_with_photos(
+        [reply(EVALUATE), reply(text_block("Take a shot."))], tmp_path
+    )
+    assistant.send(cid, "look")
+    result = last_user_content(provider)[0]
+    assert result["is_error"] is True
+    assert "shutter button" in result["content"]
+
+
+def test_evaluate_without_a_photo_source_is_an_error() -> None:
+    assistant, _, provider, cid = make([reply(EVALUATE), reply(text_block("No."))])
+    assistant.send(cid, "look")
+    assert last_user_content(provider)[0]["is_error"] is True
+
+
+def test_evaluate_raw_only_shot_suggests_a_jpeg(tmp_path: Path) -> None:
+    assistant, camera, provider, cid, store = make_with_photos(
+        [reply(EVALUATE), reply(text_block("Need a JPEG."))], tmp_path
+    )
+    camera.set("imagequality", "NEF (Raw)")
+    shoot(camera, store, 999_990.0)
+    assistant.send(cid, "look")
+    result = last_user_content(provider)[0]
+    assert result["is_error"] is True
+    assert "JPEG" in result["content"]
+
+
+def test_only_the_newest_images_stay_in_the_history(tmp_path: Path) -> None:
+    script: list[ModelReply | Exception] = []
+    for _ in range(3):
+        script += [reply(EVALUATE), reply(text_block("Seen."))]
+    assistant, camera, provider, cid, store = make_with_photos(script, tmp_path)
+    for number in range(3):
+        shoot(camera, store, 999_000.0 + number)
+        assistant.send(cid, f"shot {number}")
+    history = provider.requests[-1]
+    results = [
+        block
+        for message in history
+        if message["role"] == "user"
+        for block in message["content"]
+        if block.get("type") == "tool_result" and isinstance(block.get("content"), list)
+    ]
+    kinds = [result["content"][1]["type"] for result in results]
+    assert kinds == ["text", "image", "image"]
+    assert results[0]["content"][1]["text"] == IMAGE_REMOVED

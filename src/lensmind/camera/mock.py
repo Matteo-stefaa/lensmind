@@ -2,6 +2,10 @@
 
 import math
 from dataclasses import replace
+from fractions import Fraction
+
+from PIL import Image
+from PIL.TiffImagePlugin import IFDRational
 
 from lensmind.camera.base import (
     CameraDisconnected,
@@ -48,6 +52,16 @@ GENERIC_APERTURES = [
 ]
 FILE_TYPES = {"NEF (Raw)": ("NEF",), "NEF+Fine": ("JPG", "NEF")}
 NEF_PLACEHOLDER = b"lensmind mock NEF: not a real raw file\n"
+# EXIF tag ids written into mock JPEGs.
+EXIF_MODEL = 0x0110
+EXIF_IFD = 0x8769
+EXIF_EXPOSURE_TIME = 0x829A
+EXIF_F_NUMBER = 0x829D
+EXIF_EXPOSURE_PROGRAM = 0x8822
+EXIF_ISO = 0x8827
+EXIF_EXPOSURE_BIAS = 0x9204
+EXIF_FOCAL_LENGTH = 0x920A
+EXIF_PROGRAMS = {"M": 1, "A": 3, "AUTO": 2}
 
 
 def shutter_seconds(text: str) -> float | None:
@@ -148,7 +162,7 @@ class MockCamera:
         files = []
         for extension in FILE_TYPES.get(str(self._value("imagequality")), ("JPG",)):
             if extension == "JPG":
-                data = render(self.exposure_error(), CAPTURE_SIZE)
+                data = render(self.exposure_error(), CAPTURE_SIZE, self._exif())
             else:
                 data = NEF_PLACEHOLDER
             files.append(CapturedFile(f"{stem}.{extension}", data))
@@ -185,6 +199,23 @@ class MockCamera:
     def _error(self, seconds: float, aperture: float) -> float:
         iso = float(self._value("iso"))
         return SCENE_EV100 + math.log2(seconds * iso / 100 / aperture**2)
+
+    def _exif(self) -> Image.Exif:
+        """Shooting data as a real body records it in the JPEG."""
+        seconds = shutter_seconds(str(self._value("shutterspeed2"))) or UNTIMED_SECONDS
+        exif = Image.Exif()
+        exif[EXIF_MODEL] = str(self._value("cameramodel"))
+        exif.get_ifd(EXIF_IFD).update(
+            {
+                EXIF_EXPOSURE_TIME: IFDRational(Fraction(seconds).limit_denominator(8000)),
+                EXIF_F_NUMBER: IFDRational(parse_aperture(str(self._value("f-number")))),
+                EXIF_ISO: int(float(self._value("iso"))),
+                EXIF_EXPOSURE_BIAS: IFDRational(float(self._value("exposurecompensation"))),
+                EXIF_FOCAL_LENGTH: IFDRational(float(self._value("focallength"))),
+                EXIF_EXPOSURE_PROGRAM: EXIF_PROGRAMS[self._dial],
+            }
+        )
+        return exif
 
     def _set_shutter_index(self, index: int) -> None:
         for name in ("shutterspeed2", "shutterspeed"):

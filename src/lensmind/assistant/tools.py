@@ -83,6 +83,17 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "evaluate_shot",
+        "description": (
+            "Look at the latest shot the user took: a reduced copy of the image, exposure "
+            "statistics computed from it (luminance, clipped highlights and shadows, colour "
+            "balance) and the shooting data recorded by the camera. Also says whether the "
+            "shot was taken after the last approved proposal was applied. Prefer the "
+            "statistics to your own impression for exposure."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
         "name": "finish",
         "description": "End your work on the current request with a short summary for the user.",
         "input_schema": {

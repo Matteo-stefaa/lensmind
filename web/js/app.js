@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { initAssistant, setAssistantAvailable } from "./assistant.js";
+import { initAssistant, offerEvaluation, setAssistantAvailable } from "./assistant.js";
 import { initControls } from "./controls.js";
 import { setLastShot, showGallery } from "./gallery.js";
 import { setLanguage, t } from "./i18n.js";
@@ -51,6 +51,7 @@ async function shoot() {
     const shot = await api.capture();
     setLastShot(shot);
     result.textContent = t("captured", { files: shot.files.map((file) => file.name).join(", ") });
+    offerEvaluation();
   } catch (error) {
     result.textContent = "";
     toast(error.message);

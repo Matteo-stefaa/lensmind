@@ -34,7 +34,7 @@ class PhotoStore:
         names = []
         for captured, base_name in zip(files, base_names, strict=True):
             name = f"{prefix}_{base_name}"
-            (self.root / name).write_bytes(captured.data)
+            _write_atomically(self.root / name, captured.data)
             if Path(name).suffix.lower() in IMAGE_SUFFIXES:
                 self._make_thumb(name)
             names.append(name)
@@ -87,6 +87,19 @@ class PhotoStore:
                 thumb.save(self._thumbs / f"{name}.jpg", "JPEG", quality=80)
         except (OSError, Image.DecompressionBombError):
             pass  # the original is kept; the gallery shows it without a thumbnail
+
+
+def _write_atomically(path: Path, data: bytes) -> None:
+    """Readers (the assistant looking at the newest shot) never see a half-written file.
+
+    The temporary name is hidden, so listing and serving ignore it.
+    """
+    temporary = path.with_name(f".{path.name}.part")
+    try:
+        temporary.write_bytes(data)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _shot_names(names: list[str]) -> list[str]:

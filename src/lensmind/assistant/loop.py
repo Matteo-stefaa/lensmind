@@ -1,9 +1,12 @@
 """Conversations with the assistant: the model loop, its limits, the approval gate."""
 
+import base64
 import json
 import threading
+import time
 import uuid
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from lensmind.assistant.prompts import msg, proposal_outcome, system_prompt
@@ -17,10 +20,15 @@ from lensmind.assistant.tools import (
     camera_state,
     check_changes,
 )
+from lensmind.assistant.vision import PhotoSource, latest_shot, view_shot
 from lensmind.camera.base import Camera, CameraError
 
 # Stop reasons of a finished reply; anything else (refusal, max_tokens) is an error.
 COMPLETE = frozenset({"end_turn", "tool_use", "stop_sequence"})
+# Test-shot images kept in the history; older ones become a text note. Every request
+# resends the whole history over the phone's hotspot, and the stats stay in the text.
+MAX_IMAGES = 2
+IMAGE_REMOVED = "[image of an earlier test shot removed to save space]"
 
 
 class AssistantError(Exception):
@@ -52,6 +60,8 @@ class Conversation:
     # ask_user calls: the user's next text is their result.
     awaiting_answer: list[str] = field(default_factory=list)
     proposal: Proposal | None = None
+    # When an approved proposal last changed the camera (POSIX time).
+    applied_at: float | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -80,7 +90,7 @@ class _Step:
         return self.proposal is not None or self.question is not None or self.finished
 
 
-def tool_result(tool_use_id: str, content: str, error: bool = False) -> Block:
+def tool_result(tool_use_id: str, content: str | list[Block], error: bool = False) -> Block:
     block: Block = {"type": "tool_result", "tool_use_id": tool_use_id, "content": content}
     if error:
         block["is_error"] = True
@@ -95,8 +105,12 @@ class Assistant:
         lang: str,
         max_turns: int,
         max_conversations: int = 20,
+        photos: PhotoSource | None = None,
+        clock: Callable[[], float] = time.time,
     ) -> None:
         self._camera = camera
+        self._photos = photos
+        self._clock = clock
         self._provider = provider
         self._lang = lang
         self._max_turns = max_turns
@@ -152,9 +166,12 @@ class Assistant:
                 except CameraError as error:
                     proposal.failed = (change.name, error.message)
                     proposal.state = "partial" if proposal.applied else "failed"
-                    return proposal
+                    break
                 proposal.applied.append(change)
-            proposal.state = "applied"
+            else:
+                proposal.state = "applied"
+            if proposal.applied:
+                conversation.applied_at = self._clock()
             return proposal
         finally:
             conversation.lock.release()
@@ -176,6 +193,7 @@ class Assistant:
         last_text = ""
         for _ in range(self._max_turns):
             conversation.history.append({"role": "user", "content": blocks})
+            _prune_images(conversation.history, MAX_IMAGES)
             reply = self._provider.complete(self._system, conversation.history, TOOLS)
             if reply.stop_reason not in COMPLETE:
                 raise IncompleteReply(reply.stop_reason)
@@ -212,6 +230,8 @@ class Assistant:
                     continue
                 conversation.awaiting_answer.append(call.id)
                 step.question = _join(step.question, question)
+            elif call.name == "evaluate_shot":
+                step.results.append(self._evaluate(conversation, call))
             elif call.name == "finish":
                 step.results.append(tool_result(call.id, "ok"))
                 step.summary = str(call.input.get("summary", "")).strip() or None
@@ -232,6 +252,44 @@ class Assistant:
             return tool_result(call.id, error.message, error=True)
         return tool_result(call.id, json.dumps(state, ensure_ascii=False))
 
+    def _evaluate(self, conversation: Conversation, call: ToolCall) -> Block:
+        shot = latest_shot(self._photos) if self._photos is not None else None
+        if shot is None:
+            text = "There is no shot yet. Ask the user to take one with the shutter button."
+            return tool_result(call.id, text, error=True)
+        if shot.jpeg is None:
+            text = (
+                f"The latest shot ({', '.join(shot.files)}) has no JPEG to look at. Propose "
+                "an image quality that also records a JPEG, then ask for a new shot."
+            )
+            return tool_result(call.id, text, error=True)
+        try:
+            view = view_shot(shot.jpeg)
+        except OSError as error:
+            return tool_result(call.id, f"{shot.jpeg_name} could not be read: {error}", True)
+        applied_at = conversation.applied_at
+        after = None if applied_at is None else shot.taken_at >= applied_at
+        data = {
+            "file": shot.jpeg_name,
+            "files_of_the_shot": shot.files,
+            "seconds_since_shot": max(0, round(self._clock() - shot.taken_at)),
+            # null: no proposal has been applied in this conversation yet.
+            "taken_after_last_applied_proposal": after,
+            "image_size": [view.width, view.height],
+            "stats": view.stats,
+            "shooting_data": view.shooting or "not recorded in the file",
+        }
+        image = {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/jpeg",
+                "data": base64.b64encode(view.jpeg).decode("ascii"),
+            },
+        }
+        text = {"type": "text", "text": json.dumps(data, ensure_ascii=False)}
+        return tool_result(call.id, [text, image])
+
     def _propose(self, conversation: Conversation, call: ToolCall, step: _Step) -> None:
         if step.proposal is not None:
             text = "Only one proposal per reply: this one was ignored."
@@ -251,6 +309,24 @@ class Assistant:
 
 def _join(*parts: str | None) -> str:
     return "\n\n".join(part for part in parts if part)
+
+
+def _prune_images(history: list[Block], keep: int) -> None:
+    """Replace all but the newest `keep` test-shot images with a short note."""
+    seen = 0
+    for message in reversed(history):
+        if message["role"] != "user":
+            continue
+        for block in message["content"]:
+            content = block.get("content") if block.get("type") == "tool_result" else None
+            if not isinstance(content, list):
+                continue
+            for index in range(len(content) - 1, -1, -1):
+                if content[index].get("type") != "image":
+                    continue
+                seen += 1
+                if seen > keep:
+                    content[index] = {"type": "text", "text": IMAGE_REMOVED}
 
 
 def _snapshot(conversation: Conversation) -> _Snapshot:

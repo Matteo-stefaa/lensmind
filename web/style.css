@@ -104,6 +104,9 @@ body {
 .proposal button { width: 100%; min-height: 48px; border: 0; border-radius: 10px; background: var(--accent); color: #000; font: inherit; font-weight: 600; }
 .proposal button:disabled { opacity: 0.5; }
 .proposal-state { margin: 0; color: var(--muted); }
+.shot-offer { display: grid; gap: 8px; padding: 12px 14px; border: 1px dashed var(--border); border-radius: var(--radius); color: var(--text); }
+.shot-offer p { margin: 0; color: var(--muted); }
+.shot-offer button { min-height: 48px; border: 0; border-radius: 10px; background: var(--accent); color: #000; font: inherit; font-weight: 600; }
 .proposal-state.ok { color: var(--ok); }
 .composer {
   position: sticky;
