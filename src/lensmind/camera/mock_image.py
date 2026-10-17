@@ -33,10 +33,11 @@ def _scene(size: tuple[int, int]) -> Image.Image:
     return image
 
 
-def render(error_stops: float, size: tuple[int, int]) -> bytes:
+def render(error_stops: float, size: tuple[int, int], exif: Image.Exif | None = None) -> bytes:
     """Return the scene as JPEG, exposed `error_stops` above (or below) correct."""
     factor = 2 ** (max(-10.0, min(10.0, error_stops)) / GAMMA)
     table = [min(255, round(value * factor)) for value in range(256)] * 3
     buffer = io.BytesIO()
-    _scene(size).point(table).save(buffer, "JPEG", quality=85)
+    extra = {"exif": exif.tobytes()} if exif is not None else {}
+    _scene(size).point(table).save(buffer, "JPEG", quality=85, **extra)
     return buffer.getvalue()

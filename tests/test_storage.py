@@ -1,6 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from lensmind.camera.base import CapturedFile
@@ -103,3 +104,25 @@ def test_camera_folders_are_stripped_from_names(tmp_path: Path) -> None:
     shot = store_at(tmp_path).save([CapturedFile("/store/DCIM/../DSC_0009.JPG", JPEG)])
     assert shot.files == ["20261007-210133_DSC_0009.JPG"]
     assert (tmp_path / "20261007-210133_DSC_0009.JPG").is_file()
+
+
+def test_interrupted_write_leaves_no_partial_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def write_half(self: Path, data: bytes) -> int:
+        with self.open("wb") as file:
+            file.write(data[: len(data) // 2])
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "write_bytes", write_half)
+    with pytest.raises(OSError):
+        store_at(tmp_path).save(raw_plus_jpeg())
+    assert [p.name for p in tmp_path.iterdir() if p.is_file()] == []
+
+
+def test_save_leaves_no_temporary_files(tmp_path: Path) -> None:
+    store_at(tmp_path).save(raw_plus_jpeg())
+    assert sorted(p.name for p in tmp_path.iterdir() if p.is_file()) == [
+        "20261007-210133_DSC_0001.JPG",
+        "20261007-210133_DSC_0001.NEF",
+    ]

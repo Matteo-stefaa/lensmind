@@ -128,3 +128,19 @@ def test_apply_after_the_dial_moved(tmp_path: Path, camera: MockCamera) -> None:
         response = client.post(url)
         assert response.status_code == 409
         assert "shutterspeed2" in response.json()["detail"]
+
+
+def test_assistant_evaluates_the_shot_taken_through_the_api(
+    tmp_path: Path, camera: MockCamera
+) -> None:
+    script = [reply(tool_use_block("e1", "evaluate_shot")), reply(text_block("Looks right."))]
+    provider = FakeProvider(script)
+    app = create_app(settings_for(tmp_path), camera_factory=lambda: camera, provider=provider)
+    with TestClient(app) as client:
+        shot = client.post("/api/capture").json()
+        session = client.post("/api/assistant/sessions").json()["id"]
+        turn = client.post(f"/api/assistant/sessions/{session}/messages", json={"text": "ok?"})
+    assert turn.json()["reply"] == "Looks right."
+    result = provider.requests[-1][-1]["content"][0]
+    assert shot["files"][0]["name"] in result["content"][0]["text"]
+    assert result["content"][1]["type"] == "image"

@@ -32,6 +32,7 @@ def test_tool_names() -> None:
         "get_camera_state",
         "propose_settings",
         "ask_user",
+        "evaluate_shot",
         "finish",
     ]
     for tool in TOOLS:

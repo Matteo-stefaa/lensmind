@@ -57,10 +57,12 @@ def create_app(
         session.start_watchdog()
         app.state.settings = config
         app.state.session = session
-        app.state.store = PhotoStore(config.photos_dir)
+        store = app.state.store = PhotoStore(config.photos_dir)
         chosen = provider if provider is not None else provider_for(config)
         app.state.assistant = (
-            Assistant(session, chosen, config.language, config.max_turns) if chosen else None
+            Assistant(session, chosen, config.language, config.max_turns, photos=store)
+            if chosen
+            else None
         )
         try:
             yield

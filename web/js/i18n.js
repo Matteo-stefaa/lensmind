@@ -37,6 +37,9 @@ const STRINGS = {
     proposal_partial: "Applicata in parte: {name} non riuscita ({detail})",
     proposal_failed: "Non applicata: {name} ({detail})",
     proposal_superseded: "Superata dal nuovo messaggio",
+    shot_ready: "Scatto salvato: vuoi che l'assistente lo guardi?",
+    evaluate: "Valuta lo scatto",
+    evaluate_request: "Ho fatto uno scatto di prova: guardalo e dimmi cosa correggere.",
   },
   en: {
     back: "Back",
@@ -75,6 +78,9 @@ const STRINGS = {
     proposal_partial: "Partly applied: {name} failed ({detail})",
     proposal_failed: "Not applied: {name} ({detail})",
     proposal_superseded: "Superseded by your new message",
+    shot_ready: "Shot saved: should the assistant look at it?",
+    evaluate: "Evaluate the shot",
+    evaluate_request: "I took a test shot: look at it and tell me what to correct.",
   },
 };
 

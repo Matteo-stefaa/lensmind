@@ -22,8 +22,8 @@ the next. Do not add assistant code before phase 1 is complete.
 4. **Full loop** — intent → apply → test shot → evaluate → refine, automatic, bounded
    by `LENSMIND_MAX_TEST_SHOTS`, with live progress in the web app.
 
-Current status: phase 1 and phase 2 implemented; hardware checklist in
-docs/cameras/nikon-d3500.md; phase 2 still to be tried with a real API key.
+Current status: phases 1–3 implemented; hardware checklist in
+docs/cameras/nikon-d3500.md; phases 2 and 3 still to be tried with a real API key.
 
 ## Commands
 

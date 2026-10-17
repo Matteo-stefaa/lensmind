@@ -10,6 +10,7 @@ let available = false;
 let busy = false;
 let latest = null; // { proposal, card, session, current } of the newest proposal
 let generation = 0; // bumped by ↺: replies to an abandoned conversation are dropped
+let offer = null; // the "evaluate the shot" card, at most one
 
 export function initAssistant() {
   document.getElementById("composer").addEventListener("submit", (event) => {
@@ -18,6 +19,8 @@ export function initAssistant() {
     const text = input.value.trim();
     if (!text || busy || !available) return;
     input.value = "";
+    offer?.remove();
+    offer = null;
     send(text);
   });
   // Works while a reply is pending too, so a stalled request never traps the user.
@@ -25,6 +28,7 @@ export function initAssistant() {
     generation += 1;
     sessionId = null;
     latest = null;
+    offer = null;
     busy = false;
     document.getElementById("chat").replaceChildren();
     updateComposer();
@@ -35,6 +39,21 @@ export function initAssistant() {
 export function setAssistantAvailable(flag) {
   available = flag;
   updateComposer();
+}
+
+// After a capture: let the user hand the new shot to the assistant with one tap.
+export function offerEvaluation() {
+  if (!available) return;
+  offer?.remove();
+  const button = el("button", { type: "button", text: t("evaluate") });
+  const box = el("div", { className: "shot-offer" }, el("p", { text: t("shot_ready") }), button);
+  button.addEventListener("click", () => {
+    if (busy) return;
+    box.remove();
+    offer = null;
+    send(t("evaluate_request"));
+  });
+  offer = append(box);
 }
 
 function updateComposer() {
